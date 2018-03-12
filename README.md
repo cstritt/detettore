@@ -120,17 +120,17 @@ An advantage of detettore compared to other TE detection tools is the amount of 
 
 #### TAPs_candidates.tsv
 	chromosome
-  	TE_start <Information about the reference TE insertion>
+  	TE_start 		<Information about the reference TE insertion>
   	TE_end
   	TE_id
   	TE_length
 
-  	isize <Mean insert size of the deviant read-pairs around the TE>
-  	nr_discordant <Nr of deviant read-pairs>
-  	absence_start <Beginning of the gap>
-  	absence_end <End of the gap>
+  	isize 			<Mean insert size of the deviant read-pairs around the TE>
+  	nr_discordant 		<Nr of deviant read-pairs>
+  	absence_start 		<Beginning of the gap>
+  	absence_end 		<End of the gap>
   
-  	region_start <Same as for TIPs>
+  	region_start 		<Same as for TIPs>
   	region_end
   	region_cov_mean
   	region_cov_stdev
