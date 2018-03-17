@@ -284,13 +284,13 @@ def write_vcf(accs, unique_insertions, nbridge):
                 '##INFO=<ID=TE,Number=,Type=String,Description="TE family name">',
     
                 '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
-                '##FORMAT=<ID=ST,Number=2,Type=,Description="Strand">',
-                '##FORMAT=<ID=DP,Number=2,Type=,Description="Supporting reads">',
-                '##FORMAT=<ID=DR,Number=2,Type=,Description="Discordant reads">',
-                '##FORMAT=<ID=SR,Number=2,Type=,Description="Split reads">',
-                '##FORMAT=<ID=AL,Number=1,Type=,Description="TE alignment length">',
-                '##FORMAT=<ID=TSD,Number=1,Type=,Description="Target site duplication">',
-                '##FORMAT=<ID=DI,Number=1,Type=,Description="Distance from insertion site">']
+                '##FORMAT=<ID=ST,Number=2,Type=String,Description="Strand">',
+                '##FORMAT=<ID=DP,Number=2,Type=Integer,Description="Supporting reads">',
+                '##FORMAT=<ID=DR,Number=2,Type=Integer,Description="Discordant reads">',
+                '##FORMAT=<ID=SR,Number=2,Type=Integer,Description="Split reads">',
+                '##FORMAT=<ID=AL,Number=1,Type=Integer,Description="TE alignment length">',
+                '##FORMAT=<ID=TSD,Number=1,Type=Character,Description="Target site duplication">',
+                '##FORMAT=<ID=DI,Number=1,Type=Integer,Description="Distance from insertion site">']
     
     
     header = ['#CHROM', 'POS', 'ID', 'REF', 'ALT',
