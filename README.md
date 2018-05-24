@@ -36,10 +36,12 @@ Installation
 ------------
 
 Detettore is written in Python 2. First, clone the repository to your computer
-	git clone https://github.com/cstritt/detettore
+	
+	$ git clone https://github.com/cstritt/detettore
 
 Run the setup script by typing 
-    	$ python setup.py install
+    	
+	$ python setup.py install
 
 This installs the necessary Python packages. If Python 3 is the system default ($ python --version), detettore can be run on a virtual environment. Create one using these commands:
 
@@ -47,6 +49,7 @@ This installs the necessary Python packages. If Python 3 is the system default (
     	$ source <location>/bin/activate
 
 Or when using Anaconda:
+	
 	$ conda create -n myenv python=2.7
 	$ source activate myenv
 
