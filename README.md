@@ -35,8 +35,8 @@ The reason for this restriction is that detettore uses the AS (alignment score) 
 Installation
 ------------
 
-Detettore is written in Python 2. First, clone the repository to your computer.
-	$ git clone https://github.com/cstritt/detettore
+Detettore is written in Python 2. First, clone the repository to your computer
+	git clone https://github.com/cstritt/detettore
 
 Run the setup script by typing 
     	$ python setup.py install
