@@ -35,11 +35,13 @@ The reason for this restriction is that detettore uses the AS (alignment score) 
 Installation
 ------------
 
-Detettore is written in Python 2. First, clone the repository to your computer.
+Detettore is written in Python 2. First, clone the repository to your computer
+	
 	$ git clone https://github.com/cstritt/detettore
 
 Install the necessary Python packages by running the setup script:
     	$ python setup.py install
+
 
 If Python 3 is the system default ($ python --version), the easiest solution is to run detettore on a virtual environment. Create one using these commands:
 
@@ -47,6 +49,7 @@ If Python 3 is the system default ($ python --version), the easiest solution is 
     	$ source <location>/bin/activate
 
 Or when using Anaconda:
+	
 	$ conda create -n myenv python=2.7
 	$ source activate myenv
 
