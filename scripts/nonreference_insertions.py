@@ -42,12 +42,17 @@ def get_split_and_discordant_reads(bamfile,
         name = read.query_name
         
         
-        """ BWA-MEM specific part. 
+        """ While BWA always outputs the XS tag, Bowtie2 only does it when
+        there is a secondary alignment
         """
         AS = read.get_tag('AS')
-        XS = read.get_tag('XS')
-        
-        
+        try:  
+            XS = read.get_tag('XS')
+        except KeyError:
+            
+            XS = 0
+
+
         """ Splitreads. Only reads are considered where exactly one end
         is clipped off.
         """
@@ -220,7 +225,14 @@ def run_module(bamfile,
             line = next(f)
             readlength = int(line.split("\t")[1])    
             
-    uniq, min_aln_len, min_perc_id = thresholds
+            
+    with open(readinfo) as f:
+        lines = f.readlines()
+        readlength = int(lines[0].split("\t")[1].strip())
+        isize_mean = int(lines[3].split("\t")[1].strip())        
+    
+            
+    uniq, min_aln_len, min_perc_id, word_size = thresholds
                
     
     print('Getting candidate split reads and discordant read pairs from bam file ...')
@@ -240,6 +252,7 @@ def run_module(bamfile,
     strumenti.create_blastdb(targets)
     blast_out = strumenti.blastn('discordant.fasta', 
                                  min_perc_id,
+                                 11,
                                  cpus)
     
     discordant_hits = strumenti.hit_dictionary(blast_out, min_aln_len, 'one_hit_only')
@@ -247,11 +260,7 @@ def run_module(bamfile,
     
     
     
-    print('Clustering discordant reads\n...')
-    with open(readinfo) as f:
-        lines = f.readlines()
-        isize_mean = int(lines[1].split("\t")[1].strip())
-    
+    print('Clustering discordant reads\n...')   
     anchor_positions = get_anchor_positions(discordant_hits, discordant_anchors, 
                                             bamfile, isize_mean)  
     
@@ -284,7 +293,7 @@ def run_module(bamfile,
     print('Aligning split parts to target sequences\n...')
     fasta = write_clipped_to_fasta(split_clusters, splitreads, min_aln_len)
 
-    blast_out_split = strumenti.blastn(fasta, min_perc_id, cpus)
+    blast_out_split = strumenti.blastn(fasta, min_perc_id, word_size, cpus)
     
     split_hits = strumenti.hit_dictionary(blast_out_split, min_aln_len, 'one_hit_only')    
     print(' '.join([str(len(split_hits.keys())), 'soft-clipped reads map to a TE.']))

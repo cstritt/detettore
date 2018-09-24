@@ -19,7 +19,7 @@ BLAST+ is the only external dependency (https://blast.ncbi.nlm.nih.gov).
 
 Minimal data requirements:
 	TIPs:
-		Illumina paired-end reads aligned to a reference genome
+		Illumina paired-end reads aligned to a reference genome with BWA-MEM (Li 2013)
 		TE (consensus) sequences, available online (https://mobilednajournal.biomedcentral.com/databases)
 		reference genome
 	TAPs:
@@ -38,10 +38,10 @@ Installation
 Detettore is written in Python 2. First, clone the repository to your computer.
 	$ git clone https://github.com/cstritt/detettore
 
-Run the setup script by typing 
+Install the necessary Python packages by running the setup script:
     	$ python setup.py install
 
-This installs the necessary Python packages. If Python 3 is the system default ($ python --version), detettore can be run on a virtual environment. Create one using these commands:
+If Python 3 is the system default ($ python --version), the easiest solution is to run detettore on a virtual environment. Create one using these commands:
 
     	$ virtualenv -p python2.7 <location>
     	$ source <location>/bin/activate
@@ -64,12 +64,16 @@ The workflow of detettore is as follows:
 - use variantcaller.py to apply filters and summarize TE polymorphisms for multiple individuals in a vcf file
 - alternativelly, if only single individuals are considered, use filter.py to get filtered results for individual samples
 
+### Naming conventions
+If a gff file is used in the TAP module, the TE name in the last column of the gff
+is assumed to be formatted as "Name=TE_name".
+
 
 ### Example
 
 #### detettore.py 
-	-o xy 			<Output folder name. Ideally the sample ID>
-  	-b xy.bam 		<Unfiltered (!) bam file, i.e. including the not nicely mapping reads>
+	-o xy 			<Output folder name, e.g. the sample ID>
+  	-b xy.bam 		<Unfiltered (!) bam file, i.e. including the not uniquely-mapping reads>
   	-m tips taps 		<The module to run. Can be both at the same time or just one.>
   	-t TEconsensus.fasta	
   	-r ref.fa	
@@ -78,6 +82,7 @@ The workflow of detettore is as follows:
 	-u 30 			<Minimum difference between primary and secondary alignment score. Reads above the threshold are considered as mapping uniquely to the reference>
   	-l 30 			<Minimum length of soft-clipped read parts>
   	-id 80 			<Minimum sequence identity between reads and TE consensus sequences>
+	-ws 11          <Word size (minimum length of best perfect match) for blasting splitreads against TEs.>
 	
 	-c 4 			<Number of CPUs. The blast search can be run with multiple CPUs, as well as a time-consuming loop in the TAP module>
   	-keep 			<Keep fasta files with discordant read and clipped sequences, as well as the output of the blast search of theses seqences against the TE consensus sequences>
@@ -95,7 +100,7 @@ TAPs_candidates.tsv		# candidate TAPS
 Structure of output files
 -------------------------
 
-An advantage of detettore compared to other TE detection tools is the amount of information in its raw output. Detecting TE polymorphisms relies on a series of ad-hoc criteria because, in contrast to SNP calling, there is neither a mutational model nor any way to model errors. To avoid hard-coding decisions which might work well in one study system but not others, detettore returns a spectrum of TIP candidates from representing very messy signatures to neat ones. In our experience, looking at this spectrum (using IGV, for example) is crucial to settle upon reasonable filteria criteria.
+An advantage of detettore compared to other TE detection tools is the amount of information in its raw output. Detecting TE polymorphisms relies on a series of ad-hoc criteria because, in contrast to SNP calling, there is neither a mutational model nor any way to model errors. To avoid hard-coding decisions which might work well in one study system but not others, detettore returns a spectrum of TIP candidates from representing very messy signatures to neat ones. In our experience, looking at this spectrum (using IGV, for example) is crucial to determine reasonable filteria criteria.
 
 
 
