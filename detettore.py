@@ -6,8 +6,8 @@ Copyright (C) 2018 C. Stritt
 License: GNU General Public License v3. See LICENSE.txt for details.
 """
 
-
 import argparse
+import logging
 import os
 import shutil
 
@@ -18,8 +18,7 @@ from scripts import bamstats
 
 def get_args():
 
-    parser = argparse.ArgumentParser(description='Detect TE polymorphisms \
-                                     from paired-end read data')
+    parser = argparse.ArgumentParser(description='Detect TE polymorphisms from paired-end read data')
 
     parser.add_argument('-b', dest="bamfile", 
                         required=True,
@@ -40,39 +39,38 @@ def get_args():
 
     parser.add_argument("-r", dest="reference",  
                         required=True,
-                        help='Reference genome in fasta format. Required \
-                        to calculate read statistics')
+                        help='Reference genome in fasta format. Required to calculate read statistics')
 
     parser.add_argument('-a', dest="annot",
-                        help='TE annotation in gff or bed format. Required for \
-                        absence module.')
+                        help='TE annotation in gff or bed format. Required for absence module.')
 
     parser.add_argument('-u', dest="uniq",
                         type=int, default=30,
-                        help='Difference between XS and AS for a read to be \
-                        considered uniquely mapped. Default=30')
+                        help='Difference between XS and AS for a read to be considered uniquely mapped. [30]')
 
     parser.add_argument('-l', dest='aln_len',
                         type=int, default=30,
-                        help='Minimum alignment length for target hits. Default=30')
+                        help='Minimum alignment length for target hits. [30]')
 
     parser.add_argument('-id', dest='perc_id',
                         type=int, default=80,
-                        help='Minimum percentage identity of target hits. Default=80')
-
+                        help='Minimum percentage identity of target hits. [80]')
+    
+    parser.add_argument('-ws', dest='word_size',
+                        type=int, default=11,
+                        help='Word size (minimum length of best perfect match) for blasting splitreads against TEs. [11]')
+    
     parser.add_argument('-keep',
                         action='store_true',
                         help='Keep intermediate files.')
     
     parser.add_argument('-reconstruct',
                         action='store_true',
-                        help='For the absence module. If set, a fasta file will \
-                        be generated with TE sequences present both in the reference \
-                        and in the resequenced accession. Terribly slow!')
+                        help='For the absence module. Return sequences of TEs present in both reference and non-reference. Terribly slow!')
 
     parser.add_argument('-c', dest='cpus',
                         type= int, default=1,
-                        help='Number of CPU used for the blast search. Default=1')
+                        help='Number of CPU used for the blast search. [1]')
 
     args=parser.parse_args()
     return args
@@ -81,6 +79,14 @@ def get_args():
 def main():
 
     args = get_args()
+    
+    # Create log file
+    logging.basicConfig(
+            filename = 'logfile.txt',
+            format = '%(levelname)-10s %(asctime)s %(message)s',
+            level = logging.INFO)
+    log = logging.getLogger('logfile.txt')
+    log.info(args)
 
     # Files
     bamfile = os.path.abspath(args.bamfile)
@@ -88,7 +94,7 @@ def main():
     reference = os.path.abspath(args.reference)
     
     # Alignment and mapping thresholds
-    thresholds = [args.uniq, args.aln_len, args.perc_id]
+    thresholds = [args.uniq, args.aln_len, args.perc_id, args.word_size]
 
     # Program settings
     modus = args.modus
