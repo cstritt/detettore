@@ -46,11 +46,7 @@ def get_split_and_discordant_reads(bamfile,
         there is a secondary alignment
         """
         AS = read.get_tag('AS')
-        try:  
-            XS = read.get_tag('XS')
-        except KeyError:
-            
-            XS = 0
+        XS = read.get_tag('XS')
 
 
         """ Splitreads. Only reads are considered where exactly one end

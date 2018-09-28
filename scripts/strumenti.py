@@ -309,7 +309,7 @@ def is_overlapping(a,b):
 def cluster_reads(positions, overlap_proportion):
 
     """ Takes a dictionary with chromosomes as keys and ordered intervals.
-    Adjacent intervals are assigned to the same cluster if the overlap at
+    Adjacent intervals are assigned to the same cluster if they overlap at
     least by the specified overlap_proportion. The latter is an important
     parameter, since if defined too loosely, read clusters might include
     reads which map to other close-by TE insertions
@@ -393,16 +393,15 @@ def create_blastdb(fasta):
     subprocess.call(cmd, stdout=open(os.devnull, 'w'))
 
 
-def blastn(query, min_perc_id, cpus):
+def blastn(query, min_perc_id, word_size, cpus):
 
     outfile = query + '.blast'
-    word_size = '11'
 
     cmd = ['blastn',
            '-query', query,
            '-db', 'blastdb/targets',
            '-outfmt', '6 qseqid length bitscore sstrand sseqid sstart send qseq',
-           '-word_size', word_size,
+           '-word_size', str(word_size),
            '-perc_identity', str(min_perc_id),
            '-max_target_seqs', '1',
            '-num_threads', str(cpus)]
@@ -856,7 +855,7 @@ def create_table(combined, bamfile):
                 """ If splitreads overlap, extract the overlapping
                 sequence if it is shorter than 10 bp"""
                 if position_reverse_sr < position:
-                    region = [chrmsm, position_reverse_sr, position]
+                    region = [chrmsm, position_reverse_sr + 1, position]
                     TSD = consensus_from_bam(region, bamfile, [20, 30])
                     if len(TSD) > 15:
                         TSD = '-'
