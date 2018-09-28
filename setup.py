@@ -8,7 +8,7 @@ except ImportError:
     $ conda install setuptools'
 
 setup(name='detettore',
-      version='1.0',
+      version='1.1',
       description='A program to detect and characterize TE polymorphisms',
       author='Christoph Stritt',
       author_email='crstp.strt@gmail.com',
