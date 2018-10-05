@@ -79,14 +79,6 @@ def get_args():
 def main():
 
     args = get_args()
-    
-    # Create log file
-    logging.basicConfig(
-            filename = 'logfile.txt',
-            format = '%(levelname)-10s %(asctime)s %(message)s',
-            level = logging.INFO)
-    log = logging.getLogger('logfile.txt')
-    log.info(args)
 
     # Files
     bamfile = os.path.abspath(args.bamfile)
@@ -108,7 +100,6 @@ def main():
     except OSError:
         pass
     os.chdir(args.outfolder)
-
 
     # Get readlength, estimate mean coverage and insert size
     readinfo = [f for f in os.listdir('.') if f.endswith('_bamstats.txt')]
@@ -142,11 +133,20 @@ def main():
         reference_insertions.run_module(bamfile,
                                         readinfo,
                                         annotation_file,
+                                        reference,
                                         thresholds,
                                         reconstruct,
                                         cpus)
         print('FINIVIT ABSENTIAE DETECTIO\n')
-
+        
+        
+    # Create log file
+    logging.basicConfig(
+            filename = 'logfile.txt',
+            format = '%(levelname)-10s %(asctime)s %(message)s',
+            level = logging.INFO)
+    log = logging.getLogger('logfile.txt')
+    log.info(args)
 
 if __name__ == '__main__':
     main()
