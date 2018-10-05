@@ -153,7 +153,7 @@ def extract_deviant_reads(region, isize_stats, bamfile, mapq):
 
 
 def process_taps(annot_entry, isize_stats, bamfile, 
-                 uniq, reconstruct):
+                 contigs, uniq, reconstruct):
     
     """ Check if there are deviant read-pairs around the annotated feature
     """
@@ -163,6 +163,13 @@ def process_taps(annot_entry, isize_stats, bamfile,
 
     region_start = feature.start - (isize_mean + isize_stdev) 
     region_end = feature.end + (isize_mean + isize_stdev)
+    
+    # Reset coordinates if they are 'outside' chromosomes
+    if region_start < 0:
+        region_start = 0
+    if region_end > contigs[feature.chromosome]:
+        region_end = contigs[feature.chromosome] - 1
+
     region = (feature.chromosome, region_start, region_end)
 
     feature_length = feature.end - feature.start
@@ -188,6 +195,7 @@ def process_taps(annot_entry, isize_stats, bamfile,
 def run_module(bamfile, 
                readinfo, 
                annotation_file, 
+               reference,
                thresholds, 
                reconstruct,
                cpus):
@@ -213,6 +221,8 @@ def run_module(bamfile,
     isize_stats = (isize_mean, isize_stdev, readlength)
     uniq = thresholds[0]
     
+    contigs = {seq_record.id: len(seq_record) for seq_record in SeqIO.parse(reference, "fasta")}
+
     baseq, mapq = 20, 30
     filters = [baseq, mapq]
     recs = []
@@ -224,6 +234,7 @@ def run_module(bamfile,
                    (i,
                     isize_stats,
                     bamfile,
+                    contigs,
                     uniq,
                     reconstruct) for i in inputs)   
     
