@@ -287,8 +287,9 @@ def run_module(bamfile,
                 if start_overlap + end_overlap != 0:
                     continue
                 
-                if (candidate.length - 2*isize_stdev) < candidate.isize < (candidate.length + 2*isize_stdev):
-
+                if (candidate.length - 5*isize_stdev) < candidate.isize < (candidate.length + 5*isize_stdev):
+                    """ Way too restrictive in previous version (2*isize_stdev)"""
+                    
                     outline = candidate.write(annot) 
                     outfile.write('\t'.join(outline) + '\n')
                     
@@ -299,10 +300,21 @@ def run_module(bamfile,
                 region = [annot_row.chromosome, annot_row.start, annot_row.end]
                 seq, known = candidate.reconstruct(region, bamfile, filters)
                 
+                # How many reads bridge the start and end of the TE?
+                five_bridge = strumenti.overlapping_reads(annot_row.chromosome, 
+                                                          annot_row.start,
+                                                          bamfile, 20)
+                
+                three_bridge = strumenti.overlapping_reads(annot_row.chromosome, 
+                                                          annot_row.end,
+                                                          bamfile, 20)
+                
+                infofield = 'covered:%s,five_nbridge:%s,three_nbridge:%s' % (known, five_bridge, three_bridge)
+                
                 seqrec = SeqRecord(Seq(seq),
                                 id = '_'.join(map(str,region)),
                                 name = annot_row.id,
-                                description = 'known: ' + str(known))
+                                description = infofield)
                 recs.append(seqrec)
                 
     if reconstruct:
