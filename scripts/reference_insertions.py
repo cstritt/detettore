@@ -263,7 +263,9 @@ def run_module(bamfile,
         """ If there are deviant read pairs, check if the whole element
         or a part of it is missing
         """
-              
+        
+        is_tap = False
+        
         if candidate.nr_deviant > 0:
             
             chromosome = annot[candidate.indx].chromosome
@@ -284,38 +286,37 @@ def run_module(bamfile,
                                                           element_end,
                                                           bamfile, 20)
                 
-                if start_overlap + end_overlap != 0:
-                    continue
-                
-                if (candidate.length - 5*isize_stdev) < candidate.isize < (candidate.length + 5*isize_stdev):
+                if start_overlap + end_overlap == 0 and \
+                   (candidate.length - 5*isize_stdev) < candidate.isize < (candidate.length + 5*isize_stdev):
                     """ Way too restrictive in previous version (2*isize_stdev)"""
                     
                     outline = candidate.write(annot) 
                     outfile.write('\t'.join(outline) + '\n')
+                    is_tap = True
                     
-        else:
-            if reconstruct:
-                                
-                annot_row = annot[candidate.indx]
-                region = [annot_row.chromosome, annot_row.start, annot_row.end]
-                seq, known = candidate.reconstruct(region, bamfile, filters)
-                
-                # How many reads bridge the start and end of the TE?
-                five_bridge = strumenti.overlapping_reads(annot_row.chromosome, 
-                                                          annot_row.start,
-                                                          bamfile, 20)
-                
-                three_bridge = strumenti.overlapping_reads(annot_row.chromosome, 
-                                                          annot_row.end,
-                                                          bamfile, 20)
-                
-                infofield = 'covered:%s,five_nbridge:%s,three_nbridge:%s' % (known, five_bridge, three_bridge)
-                
-                seqrec = SeqRecord(Seq(seq),
-                                id = '_'.join(map(str,region)),
-                                name = annot_row.id,
-                                description = infofield)
-                recs.append(seqrec)
+        
+        if not is_tap and reconstruct:
+            
+            annot_row = annot[candidate.indx]
+            region = [annot_row.chromosome, annot_row.start, annot_row.end]
+            seq, known = candidate.reconstruct(region, bamfile, filters)
+            
+            # How many reads bridge the start and end of the TE?
+            five_bridge = strumenti.overlapping_reads(annot_row.chromosome, 
+                                                      annot_row.start,
+                                                      bamfile, 20)
+            
+            three_bridge = strumenti.overlapping_reads(annot_row.chromosome, 
+                                                      annot_row.end,
+                                                      bamfile, 20)
+            
+            infofield = 'covered:%s,five_nbridge:%s,three_nbridge:%s' % (known, five_bridge, three_bridge)
+            
+            seqrec = SeqRecord(Seq(seq),
+                            id = '_'.join(map(str,region)),
+                            name = annot_row.id,
+                            description = infofield)
+            recs.append(seqrec)
                 
     if reconstruct:
         SeqIO.write(recs, 'omnipresent.fasta', 'fasta')

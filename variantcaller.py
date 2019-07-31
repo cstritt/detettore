@@ -308,6 +308,7 @@ def write_vcf(accs, unique_insertions, nbridge):
                        site[1],
                        '.',
                        '.',
+                       '.',
                        'GT:ST:DP:DR:SR:AL:TSD:DI']
     
             accs_d = copy.deepcopy(accs_d_mc)

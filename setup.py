@@ -21,13 +21,14 @@ setup(name='detettore',
                'filter.py',
                'variantcaller.py'],
       
+               
+      python_requires='<3',
+               
       install_requires=[
               'pysam',
               'statistics',
               'biopython',
               'joblib',
-              'scipy',
-              'setuptools'],
-                  
-      python_requires='<3')
+              'scipy < 1.3',
+              'setuptools'])
 
