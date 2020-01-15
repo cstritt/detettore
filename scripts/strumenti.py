@@ -294,8 +294,8 @@ def parse_gff(gff_file):
 
 
 def is_overlapping(a,b):
-    a_range = set(xrange(a[0], a[1]))
-    b_range = set(xrange(b[0], b[1]))
+    a_range = set(range(a[0], a[1]))
+    b_range = set(range(b[0], b[1]))
 
     intersection = a_range & b_range
     union = a_range | b_range
@@ -317,9 +317,7 @@ def cluster_reads(positions, overlap_proportion):
     """
 
     clusters = dict()
-
-    chromosomi = positions.keys()
-    chromosomi.sort()
+    chromosomi = sorted(positions.keys())
 
     for k in chromosomi:
 
@@ -329,7 +327,7 @@ def cluster_reads(positions, overlap_proportion):
         clusters[k] = list()
         positions_chrmsm = positions[k]
 
-        for i in xrange(len(positions_chrmsm)):
+        for i in range(len(positions_chrmsm)):
 
             line = positions_chrmsm[i]
             name = line[0]
@@ -412,7 +410,7 @@ def blastn(query, min_perc_id, word_size, cpus):
 
     with open(outfile, 'w') as f:
         for line in blast_out:
-            f.write(line + '\n')
+            f.write(line.decode('utf-8') + '\n')
 
     return blast_out
 
@@ -427,8 +425,7 @@ def hit_dictionary(blast_out, min_aln_len, modus):
     TEhits = dict()
 
     for line in blast_out:
-
-        fields = line.split('\t')
+        fields = line.decode('utf-8').split('\t')
         aln_len = float(fields[1])
 
         if aln_len < min_aln_len:
@@ -508,7 +505,9 @@ def summarize_cluster(cluster, read_dictionary, hits, modus, weight):
 
             summary[targetname][s].update(hit, read, readname, modus, weight)
 
-    targets = summary.keys()
+    targets = list(summary.keys())
+    deletenda = []
+
     for target in targets:
         if modus == 'discordant':
             nr_obs_l = len(summary[target][0].discordant.anchors)
@@ -519,7 +518,10 @@ def summarize_cluster(cluster, read_dictionary, hits, modus, weight):
             nr_obs_r = len(summary[target][1].splitreads.anchors)
 
         if not (nr_obs_l and nr_obs_r):
-            del summary[target]
+            deletenda.append(target)
+
+    for target in deletenda:
+        del summary[target]
 
     return summary
 
@@ -538,8 +540,7 @@ def combine_hits_and_anchors(clusters,
     summaries = dict()
     posizioni = dict()
 
-    chromosomi = clusters.keys()
-    chromosomi.sort()
+    chromosomi = sorted(clusters.keys())
 
     for chromosome in chromosomi:
 
@@ -568,14 +569,13 @@ def add_splitread_evidence(cluster_summaries,
                            splitreads,
                            split_hits,
                            discordant_cluster_positions):
-    
+
     """ Add split read information to existing discordant read summaries
-    or create new summaries if the split read cluster does not overlap with 
+    or create new summaries if the split read cluster does not overlap with
     any discordant-read summary
     """
 
-    chromosomi = split_clusters.keys()
-    chromosomi.sort()
+    chromosomi = sorted(split_clusters.keys())
 
     for chromosome in chromosomi:
         x = 0 # variable to store the position in the loop below, to avoid going through the whole thing every time
@@ -596,16 +596,16 @@ def add_splitread_evidence(cluster_summaries,
                 overlap = False
 
                 if chromosome in discordant_cluster_positions:
-                    
+
                     """ Go through discordant read summaries and check
-                    if there is positional overlap. 
+                    if there is positional overlap.
                     """
-                    for i in xrange(x, len(discordant_cluster_positions[chromosome])):
+                    for i in range(x, len(discordant_cluster_positions[chromosome])):
 
                         region_start = discordant_cluster_positions[chromosome][i][0]
                         region_end = discordant_cluster_positions[chromosome][i][1]
 
-                        if position in xrange(region_start, region_end):
+                        if position in range(region_start, region_end):
 
                             cluster_summaries[chromosome][i] = merge_summaries(
                                     cluster_summaries[chromosome][i],
@@ -630,7 +630,7 @@ def merge_summaries(existing, new):
 
         if not target in existing:
             existing[target] = [cluster_summary(), cluster_summary()]
-        
+
         # 0 and 1 for the forward and the reverse strand, resp.
         for i in [0,1]:
 
@@ -664,7 +664,7 @@ def consensus_from_bam(region, bamfile, filters):
 
     pile_dict = dict()
     crap_reads = set()
-    
+
     for pileupcolumn in pybam.pileup(chrmsm, strt, end, **{"truncate": True}):
         pos = pileupcolumn.pos
         pile_dict[pos] = []
@@ -672,7 +672,7 @@ def consensus_from_bam(region, bamfile, filters):
         for pileupread in pileupcolumn.pileups:
 
             read = pileupread.alignment
-            
+
             if read.query_name in crap_reads:
                 continue
 
@@ -737,29 +737,29 @@ def get_highest_scoring_target(site):
 
 
 def overlapping_reads(chromosome, position, bamfile, overlap):
-    
+
     """ Checks if there are reads bridging the suspected insertion
     break point.
     """
-    
+
     bridge_reads = []
 
     pybam = pysam.AlignmentFile(bamfile, "rb")
-    
+
     for read in pybam.fetch(chromosome, position, position+1):
-        
+
         if not read.mapq > 0:
             continue
-                      
+
         down = [x for x in range(read.reference_start, read.reference_end) if
                 x < position]
         up = [x for x in range(read.reference_start, read.reference_end) if
                 x > position]
-        
+
         if len(down) > overlap and len(up) > overlap:
-            
+
             bridge_reads.append(read.query_name)
-            
+
     pybam.close()
     return len(bridge_reads)
 
@@ -867,12 +867,12 @@ def create_table(combined, bamfile):
             region_end = max([site[name_l][0].region_end, site[name_r][1].region_end])
             region = [chrmsm, region_start, region_end]
             region_coverage = local_cov(region, bamfile)
-            
-            
+
+
             """ Number of reads spanning the insertion site. If more than n
             non-split reads span it, the insertion is considered heterozygous"""
             n_bridge_reads = overlapping_reads(chrmsm, position, bamfile, 20)
-            
+
 
             anchor_reads = ','.join(d_anchors_l) + ';' +\
                            ','.join(d_anchors_r) + ';' +\
@@ -896,9 +896,9 @@ def create_table(combined, bamfile):
                        anchor_reads]
 
             outline = map(str, outline)
-            tabula.append(outline)
+            tabula.append(list(outline))
 
-    tabula.sort(key=lambda x: (x[0], int(x[1])))
+    tabula = sorted(tabula, key=lambda x: (x[0], int(x[1])))
     with open('TIPs_candidates.tsv', 'w') as f, \
          open('TIPs_supporting_reads.txt', 'w') as g:
 

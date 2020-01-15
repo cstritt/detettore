@@ -2,14 +2,14 @@ detettore
 =========
 
 A program to detect and characterize transposable element (TE) polymorphisms using
-reference-aligned paired-end reads. 
+reference-aligned paired-end reads.
 
 detettore searches for:
 
 - TE insertion polymorphisms (TIPs), i.e. TEs absent in the reference genome but present in a sequenced individual
 - TE absence polymorphisms (TAPs), i.e. TEs present in the reference but absent in a sequenced individual
 
-With sequencing data for multiple individuals, detettore can summarize variants in a vcf file, which is a standard input format for many population genetic tools. 
+With sequencing data for multiple individuals, detettore can summarize variants in a vcf file, which is a standard input format for many population genetic tools.
 
 
 Requirements
@@ -27,34 +27,33 @@ Minimal data requirements:
 		reference genome
 
 Note on the paired-end reads:
-It is assumed that the paired-end reads were aligned to a reference genome with BWA-MEM (Li 2013). 
+It is assumed that the paired-end reads were aligned to a reference genome with BWA-MEM (Li 2013).
 The reason for this restriction is that detettore uses the AS (alignment score) and XS (secondary alignment score) tags in the bam file to determine whether a read maps uniquely to the reference genome. Other aligners might not produce these optional tags. It should be easy, however, to adapt the source code to different tags.
-
 
 
 Installation
 ------------
 
-Detettore is written in Python 2. First, clone the repository to your computer
-	
+Detettore is written in Python 3. First, clone the repository to your computer
+
 	$ git clone https://github.com/cstritt/detettore
 
 Install the necessary Python packages by running the setup script:
+
     	$ python setup.py install
 
 
-If Python 3 is the system default ($ python --version), the easiest solution is to run detettore on a virtual environment. Create one using these commands:
+If Python 3 is not the system default ($ python --version), the easiest solution is to run detettore on a virtual environment. Create one using these commands:
 
-    	$ virtualenv -p python2.7 <location>
+    	$ virtualenv -p python3.7 <location>
     	$ source <location>/bin/activate
 
 Or when using Anaconda:
-	
-	$ conda create -n myenv python=2.7
-	$ source activate myenv
+
+	$ conda create -n detettore python=3.7
+	$ source activate detettore
 
 Then run setup.py on the activated environment.
-
 
 
 Usage
@@ -62,7 +61,7 @@ Usage
 
 The workflow of detettore is as follows:
 
-- detect candidate TIPs and TAPs in single individuals by by running detettore.py 
+- detect candidate TIPs and TAPs in single individuals by by running detettore.py
 - explore results in order to find reasonable filtering criteria (important!)
 - use variantcaller.py to apply filters and summarize TE polymorphisms for multiple individuals in a vcf file
 - alternativelly, if only single individuals are considered, use filter.py to get filtered results for individual samples
@@ -74,32 +73,32 @@ is assumed to be formatted as "Name=TE_name".
 
 ### Example
 
-#### detettore.py 
+#### detettore.py
 	-o xy 			<Output folder name, e.g. the sample ID>
   	-b xy.bam 		<Unfiltered (!) bam file, i.e. including the not uniquely-mapping reads>
   	-m tips taps 		<The module to run. Can be both at the same time or just one.>
-  	-t TEconsensus.fasta	
-  	-r ref.fa	
+  	-t TEconsensus.fasta
+  	-r ref.fa
   	-a ref_TEannot_.gff 	<Bed format should work too>
-  	
+
 	-u 30 			<Minimum difference between primary and secondary alignment score. Reads above the threshold are considered as mapping uniquely to the reference>
   	-l 30 			<Minimum length of soft-clipped read parts>
   	-id 80 			<Minimum sequence identity between reads and TE consensus sequences>
 	-ws 11          <Word size (minimum length of best perfect match) for blasting splitreads against TEs.>
-	
+
 	-c 4 			<Number of CPUs. The blast search can be run with multiple CPUs, as well as a time-consuming loop in the TAP module>
   	-keep 			<Keep fasta files with discordant read and clipped sequences, as well as the output of the blast search of theses seqences against the TE consensus sequences>
   	-reconstruct 		<If the TAP module is used, TE sequences present in the reference and the sequenced individual can be reconstructed and written to a fasta file. Very slow for large annotations!>
 
 
 This will run the the TIP and the TAP analysis and create the output folder xy with 4 files:
-xy_bamstats.txt	<bam read statistics	
+xy_bamstats.txt	<bam read statistics
 TIPs_candidates.tsv		# candidate non-reference TE insertions
 TIPs_supporting_reads.txt	# names of reads supporting the TIP candidates
 TAPs_candidates.tsv		# candidate TAPS
 
-	
-	
+
+
 Structure of output files
 -------------------------
 
@@ -112,18 +111,18 @@ An advantage of detettore compared to other TE detection tools is the amount of 
    	position
   	TE
   	strand		
-  
+
   	nr_supporting_reads 	<Total number of supporting reads. Evidence from the 5' and the 3' site is separated with a dash.>
   	nr_discordant_reads
   	nr_splitreads
-  
+
   	nr_aligned_positions	<Nr of positions in the TE consensus sequence that are covered by the discordant reads and split reads reaching into the insertion>
 	TSD 			<Target site duplication sequence>
 	nr_bridge_reads 	<Number of reads which bridge the insertion breakpoint and point to heterozygous insertions or false positives>
   	region_start		<Coordinates of the region surrounding the TE insertion>
-  	region_end 
+  	region_end
   	region_cov_mean 	<Mean coverage in this region. Useful indicator of messiness and a good filtering criterion.>
-  	region_cov_stdev	
+  	region_cov_stdev
 
 
 
@@ -138,7 +137,7 @@ An advantage of detettore compared to other TE detection tools is the amount of 
   	nr_discordant 		<Nr of deviant read-pairs>
   	absence_start 		<Beginning of the gap>
   	absence_end 		<End of the gap>
-  
+
   	region_start 		<Same as for TIPs>
   	region_end
   	region_cov_mean
@@ -150,7 +149,7 @@ Filtering and variant calling
 =============================
 
 Single TIP candidate files can be filtered with filter.py. The same filters are implemented in variantcaller.py, which takes a list of TIP candidate
-files as input. Such a list can be generated by typing 
+files as input. Such a list can be generated by typing
 
 	$ find $PWD -type f -name "TIPs_candidates.tsv"
 
@@ -160,5 +159,3 @@ in the project directory. Importantly, the output folder names will be the sampl
 License
 =======
 GNU General Public License v3. See LICENSE.txt for details.
-
-

@@ -52,7 +52,7 @@ def chromosome_length(fasta):
 
 def core_dist_stats(dist):
     """ Get the core of a distributions and calculates its moments. The core
-    rather than the full distribution is used in order to mitigate the 
+    rather than the full distribution is used in order to mitigate the
     influence if coverage and insert size outliers in the bam file.
     """
     # Median absolute deviation
@@ -65,11 +65,11 @@ def core_dist_stats(dist):
     upper_limit = median + (10*mad)
 
     core_dist = [i for i in dist if (i >= under_limit and i < upper_limit)]
-    
+
     mean = int(statistics.mean(core_dist))
     stdev = int(statistics.stdev(core_dist))
     return mean, stdev
-       
+
 
 def coverage_stats(bamfile, refgen):
 
@@ -133,10 +133,10 @@ def isize_stats(bamfile, proportion):
 
 
 def write_output(bamfile, refgen, proportion):
-    
+
     cov_mean, cov_stdev = coverage_stats(bamfile, refgen)
     isize, readlength = isize_stats(bamfile, proportion)
-    
+
     outlist = ['readlength\t' + str(readlength),
                'coverage_mean\t' + str(cov_mean),
                'coverage_stdev\t' + str(cov_stdev),
@@ -147,10 +147,10 @@ def write_output(bamfile, refgen, proportion):
     outfile = basename + '_bamstats.txt'
     with open(outfile, 'w') as f:
         for line in outlist:
-            print line
+            print(line)
             f.write(line + '\n')
     return outfile
-            
+
 
 def main():
 
