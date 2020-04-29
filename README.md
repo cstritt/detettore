@@ -149,31 +149,30 @@ conda activate detettore
 
 # Run detettore TIP module on example data
 detettore.py \
-  -b example/BdTR7a.rdup.ds_0.39.Bd5.bam \
+  -b example/mapped_reads.bam \
   -m tips \
   -o test \
-  -t example/TREP_consensus.Bdis.simplified.fasta \
-  -r example/Bdistachyon_314_v3.0.Bd5.fa \
+  -t example/te_consensus.fasta \
+  -r example/reference.fasta \
   -c 4
 
 ```
 
-Four files should be created in the “test” folder,
 
 #### TE absence polymorphisms
 
 ``` bash
 # activate virtual environment
-conda activate py27
+conda activate detettore
 
 # run detettore TAPs module on example data
 detettore.py \
-  -b data/BdTR7a.rdup.ds_0.39.Bd5.bam \
+  -b data/mapped_reads.bam \
   -m taps \
-  -o results \
-  -t data/TREP_consensus.Bdis.simplified.fasta \
-  -r data/Bdistachyon_314_v3.0.Bd5.fa \
-  -a data/Bdistachyon_RATT_TEannot_v3_07-07-2017.Bd5.gff \
+  -o test \
+  -t example/te_consensus.fasta \
+  -r example/reference.fasta \
+  -a example/te_annotation.gff \
   -c 4
 ```
 
