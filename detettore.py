@@ -118,7 +118,7 @@ def main():
 
 
     if 'tips' in modus:
-        print('\nINCIPIT PRESENTIAE DETECTIO')
+        print('\nSearching TE insertion polymorphisms...')
         nonreference_insertions.run_module(bamfile,
                                            targets,
                                            thresholds,
@@ -131,11 +131,11 @@ def main():
                       'softclipped.fasta', 'softclipped.fasta.blast']:
                 os.remove(g)
 
-        print('FINIVIT PRESENTIAE DETECTIO\n')
+        print('TIP search finished successfully\n')
 
 
     if 'taps' in modus:
-        print('INCIPIT ABSENTIAE DETECTIO')
+        print('Searching TE absence polymorphisms')
         reference_insertions.run_module(bamfile,
                                         readinfo,
                                         annotation_file,
@@ -143,7 +143,7 @@ def main():
                                         thresholds,
                                         reconstruct,
                                         cpus)
-        print('FINIVIT ABSENTIAE DETECTIO\n')
+        print('TAP search finished successfully\n')
 
 
     # Create log file
