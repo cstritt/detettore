@@ -1,161 +1,240 @@
-detettore
-=========
+*detettore* – a program to detect transposable element polymorphisms
+================
+April 2020
 
-A program to detect and characterize transposable element (TE) polymorphisms using
-reference-aligned paired-end reads.
+![](detettore_ad.png)
 
-detettore searches for:
+*Detettore* is a program to detect and characterize transposable element
+(TE) polymorphisms using reference-aligned paired-end reads.
 
-- TE insertion polymorphisms (TIPs), i.e. TEs absent in the reference genome but present in a sequenced individual
-- TE absence polymorphisms (TAPs), i.e. TEs present in the reference but absent in a sequenced individual
+The program searches for:
 
-With sequencing data for multiple individuals, detettore can summarize variants in a vcf file, which is a standard input format for many population genetic tools.
+  - **TE insertion polymorphisms (TIPs)**, i.e. TEs absent in the
+    reference genome but present in a sequenced individual
+  - **TE absence polymorphisms (TAPs)**, i.e. TEs present in the
+    reference but absent in a sequenced individual
 
+## Requirements
 
-Requirements
-------------
+BLAST+ is the only external dependency
+(<https://blast.ncbi.nlm.nih.gov>).
 
-BLAST+ is the only external dependency (https://blast.ncbi.nlm.nih.gov).
+**Minimal data requirements**
 
-Minimal data requirements:
-	TIPs:
-		Illumina paired-end reads aligned to a reference genome with BWA-MEM (Li 2013)
-		TE (consensus) sequences, available online (https://mobilednajournal.biomedcentral.com/databases)
-		reference genome
-	TAPs:
-		TE annotation in bed or gff
-		reference genome
+  - Illumina paired-end reads aligned to a reference genome with BWA-MEM
+    (Li 2013)  
+  - TE consensus sequences  
+  - reference genome  
+  - TE annotation in bed or gff (only required for TAPs)
 
-Note on the paired-end reads:
-It is assumed that the paired-end reads were aligned to a reference genome with BWA-MEM (Li 2013).
-The reason for this restriction is that detettore uses the AS (alignment score) and XS (secondary alignment score) tags in the bam file to determine whether a read maps uniquely to the reference genome. Other aligners might not produce these optional tags. It should be easy, however, to adapt the source code to different tags.
+**Note on the paired-end reads**  
+It is assumed that the paired-end reads were aligned to a reference
+genome with BWA-MEM (Li 2013). The reason for this restriction is that
+different aligners use different ways to indicate whether a read maps
+uniquely to the reference or at multiple places.
 
+## Download and install *detettore*
 
-Installation
-------------
+Download the *detettore* directory from Github.
 
-Detettore is written in Python 3. First, clone the repository to your computer
+``` bash
+git clone https://github.com/cstritt/detettore
+```
 
-	$ git clone https://github.com/cstritt/detettore
+It is most convenient to install *detettore* in a Python virtual
+environment. Here are two ways to set up a virtual environment.
 
-Install the necessary Python packages by running the setup script:
+``` bash
+# When using the Anaconda distribution
+conda create -n detettore python=3.7
 
-    	$ python setup.py install
+# Without Anaconda, replacing <location> with the path to the environment
+virtualenv -p python3.7 <location>
+```
 
+Finally, activate the environment and install *detettore*.
 
-If Python 3 is not the system default ($ python --version), the easiest solution is to run detettore on a virtual environment. Create one using these commands:
+``` bash
+# With Anaconda
+conda activate detettore
 
-    	$ virtualenv -p python3.7 <location>
-    	$ source <location>/bin/activate
+# Without
+source <location>/bin/activate    
 
-Or when using Anaconda:
+# Install detettore
+cd ~/programs/detettore
+python setup.py install
+```
 
-	$ conda create -n detettore python=3.7
-	$ source activate detettore
+## Usage
 
-Then run setup.py on the activated environment.
+#### Command line parameters of detettore.py
 
+| Parameter     | Explanation                                                                                                                                                                 |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| \-o           | Output folder name, e.g. the sample ID                                                                                                                                      |
+| \-b           | Unfiltered (\!) bam file, i.e. including the not uniquely-mapping reads                                                                                                     |
+| \-m           | The module to run. Can be both at the same time or just one \[tips, taps\]                                                                                                  |
+| \-t           | TE consensus sequences in fasta format                                                                                                                                      |
+| \-r           | Reference genome in fasta format                                                                                                                                            |
+| \-a           | TE annotation in bed or gff format                                                                                                                                          |
+| \-u           | Minimum difference between primary and secondary alignment score. Reads above the threshold are considered as mapping uniquely to the reference \[30\]                      |
+| \-l           | Minimum length of soft-clipped read parts \[30\]                                                                                                                            |
+| \-id          | Minimum sequence identity between reads and TE consensus sequences \[80\]                                                                                                   |
+| \-ws          | Word size (minimum length of best perfect match) for blasting splitreads against TEs \[11\]                                                                                 |
+| \-c           | Number of CPUs. The blast search can be run with multiple CPUs, as well as a time-consuming loop in the TAP module \[1\]                                                    |
+| \-keep        | Keep fasta files with discordant read and clipped sequences, as well as the output of the blast search of theses seqences against the TE consensus sequences                |
+| \-reconstruct | If the TAP module is used, TE sequences present in the reference and the sequenced individual can be reconstructed and written to a fasta file. Slow for large annotations. |
 
-Usage
------
+**Naming conventions**  
+If a gff file is used in the TAP module, the TE name in the last column
+of the gff is assumed to be formatted as “Name=TE\_name”.
 
-The workflow of detettore is as follows:
+## Structure of output files
 
-- detect candidate TIPs and TAPs in single individuals by by running detettore.py
-- explore results in order to find reasonable filtering criteria (important!)
-- use variantcaller.py to apply filters and summarize TE polymorphisms for multiple individuals in a vcf file
-- alternativelly, if only single individuals are considered, use filter.py to get filtered results for individual samples
+*Detettore* provide a wealth of information for TIP candidates. Besides
+the number of supporting discordant and split reads, the number of
+bridge reads are reported, that is, the number of reads spanning the
+insertion breakpoint and thus indicating heterozygosity or a false
+positive. Furthermore, for each candidate the regional coverage is
+shown, which allows to filter out repetitive and low-confidence
+regions.
 
-### Naming conventions
-If a gff file is used in the TAP module, the TE name in the last column of the gff
-is assumed to be formatted as "Name=TE_name".
+#### tips.tsv
 
+| Header                 | Explanation                                                                                                                       |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| chromosome             |                                                                                                                                   |
+| position               |                                                                                                                                   |
+| TE                     |                                                                                                                                   |
+| strand                 |                                                                                                                                   |
+| nr\_supporting\_reads  | Total number of supporting reads. Evidence from the 5’ and the 3’ site is separated with a dash.                                  |
+| nr\_discordant\_reads  |                                                                                                                                   |
+| nr\_splitreads         |                                                                                                                                   |
+| nr\_aligned\_positions | Nr of positions in the TE consensus sequence that are covered by the discordant reads and split reads reaching into the insertion |
+| TSD                    | Target site duplication sequence                                                                                                  |
+| nr\_bridge\_reads      | Number of reads which bridge the insertion breakpoint and point to heterozygous insertions or false positives                     |
+| region\_start          | Coordinates of the region surrounding the TE insertion                                                                            |
+| region\_end            |                                                                                                                                   |
+| region\_cov\_mean      | Mean coverage in this region. Useful indicator of messiness and a good filtering criterion.                                       |
+| region\_cov\_stdev     |                                                                                                                                   |
 
-### Example
+#### taps.tsv
 
-#### detettore.py
-	-o xy 			<Output folder name, e.g. the sample ID>
-  	-b xy.bam 		<Unfiltered (!) bam file, i.e. including the not uniquely-mapping reads>
-  	-m tips taps 		<The module to run. Can be both at the same time or just one.>
-  	-t TEconsensus.fasta
-  	-r ref.fa
-  	-a ref_TEannot_.gff 	<Bed format should work too>
+| Header             | Explanation                                              |
+| ------------------ | -------------------------------------------------------- |
+| chromosome         |                                                          |
+| TE\_start          | Start of the reference TE insertion                      |
+| TE\_end            | End of the reference TE insertion                        |
+| TE\_id             | ID of the reference TE                                   |
+| TE\_length         | Length of the reference TE                               |
+| isize              | Mean insert size of the deviant read-pairs around the TE |
+| nr\_discordant     | Nr of deviant read-pairs                                 |
+| absence\_start     | Beginning of the gap                                     |
+| absence\_end       | End of the gap                                           |
+| region\_start      | Same as for TIPs                                         |
+| region\_end        |                                                          |
+| region\_cov\_mean  |                                                          |
+| region\_cov\_stdev |                                                          |
 
-	-u 30 			<Minimum difference between primary and secondary alignment score. Reads above the threshold are considered as mapping uniquely to the reference>
-  	-l 30 			<Minimum length of soft-clipped read parts>
-  	-id 80 			<Minimum sequence identity between reads and TE consensus sequences>
-	-ws 11          <Word size (minimum length of best perfect match) for blasting splitreads against TEs.>
+## Walk-through with example data
 
-	-c 4 			<Number of CPUs. The blast search can be run with multiple CPUs, as well as a time-consuming loop in the TAP module>
-  	-keep 			<Keep fasta files with discordant read and clipped sequences, as well as the output of the blast search of theses seqences against the TE consensus sequences>
-  	-reconstruct 		<If the TAP module is used, TE sequences present in the reference and the sequenced individual can be reconstructed and written to a fasta file. Very slow for large annotations!>
+Test run of *detettore* on the data provided in the example folder.
 
+#### TE insertion polymorphisms
 
-This will run the the TIP and the TAP analysis and create the output folder xy with 4 files:
-xy_bamstats.txt	<bam read statistics
-TIPs_candidates.tsv		# candidate non-reference TE insertions
-TIPs_supporting_reads.txt	# names of reads supporting the TIP candidates
-TAPs_candidates.tsv		# candidate TAPS
+``` bash
+# Activate virtual environment
+conda activate detettore
 
+# Run detettore TIP module on example data
+detettore.py \
+  -b example/BdTR7a.rdup.ds_0.39.Bd5.bam \
+  -m tips \
+  -o test \
+  -t example/TREP_consensus.Bdis.simplified.fasta \
+  -r example/Bdistachyon_314_v3.0.Bd5.fa \
+  -c 4
+  
+```
 
+Four files should be created in the “test” folder,
 
-Structure of output files
--------------------------
+#### TE absence polymorphisms
 
-An advantage of detettore compared to other TE detection tools is the amount of information in its raw output. Detecting TE polymorphisms relies on a series of ad-hoc criteria because, in contrast to SNP calling, there is neither a mutational model nor any way to model errors. To avoid hard-coding decisions which might work well in one study system but not others, detettore returns a spectrum of TIP candidates from representing very messy signatures to neat ones. In our experience, looking at this spectrum (using IGV, for example) is crucial to determine reasonable filteria criteria.
+``` bash
+# activate virtual environment
+conda activate py27
 
+# run detettore TAPs module on example data
+detettore.py \
+  -b data/BdTR7a.rdup.ds_0.39.Bd5.bam \
+  -m taps \
+  -o results \
+  -t data/TREP_consensus.Bdis.simplified.fasta \
+  -r data/Bdistachyon_314_v3.0.Bd5.fa \
+  -a data/Bdistachyon_RATT_TEannot_v3_07-07-2017.Bd5.gff \
+  -c 4
+```
 
+## Making sense of the output
 
-#### TIPs_candidates.tsv
-	chromosome
-   	position
-  	TE
-  	strand		
+Here two possible applications of *detettore* are shown.
 
-  	nr_supporting_reads 	<Total number of supporting reads. Evidence from the 5' and the 3' site is separated with a dash.>
-  	nr_discordant_reads
-  	nr_splitreads
+1)  In the first, we have a have a candidate gene and want to know
+    whether it contains TE insertion polymorphisms.  
+2)  In the second, individual output files are pooled into a vcf file to
+    study the variation a particular family generated in a natural
+    population.
 
-  	nr_aligned_positions	<Nr of positions in the TE consensus sequence that are covered by the discordant reads and split reads reaching into the insertion>
-	TSD 			<Target site duplication sequence>
-	nr_bridge_reads 	<Number of reads which bridge the insertion breakpoint and point to heterozygous insertions or false positives>
-  	region_start		<Coordinates of the region surrounding the TE insertion>
-  	region_end
-  	region_cov_mean 	<Mean coverage in this region. Useful indicator of messiness and a good filtering criterion.>
-  	region_cov_stdev
+#### 1\. Search TIPs in and around a candidate region
 
+``` r
+# Define some candidate genes
+candidate_genes <- list(
+  'Bradi1g77130' = c('Bd1', 73734763,   73736724),
+  'Bradi4g09872' = c('Bd4', 9394780,    9398745),
+  'Bradi5g01366' = c('Bd5', 1292944,    1297431)
+  )
 
+# Load TIPs
+tip_files <- list.files('~/github/detettore/example/tips', full.names = T, recursive = T, pattern="tips", include.dirs = T)
 
-#### TAPs_candidates.tsv
-	chromosome
-  	TE_start 		<Information about the reference TE insertion>
-  	TE_end
-  	TE_id
-  	TE_length
+tips <- data.frame()
 
-  	isize 			<Mean insert size of the deviant read-pairs around the TE>
-  	nr_discordant 		<Nr of deviant read-pairs>
-  	absence_start 		<Beginning of the gap>
-  	absence_end 		<End of the gap>
+for (f in tip_files){
+  
+  t <- read.table(f, header=T)
+  
+  # Add accession name to table 
+  acc <- strsplit(f, split = "/")[[1]][8]
+  t$acc <- as.factor(rep(acc, nrow(t)))
 
-  	region_start 		<Same as for TIPs>
-  	region_end
-  	region_cov_mean
-  	region_cov_stdev
+  tips <- rbind(tips, t) 
+}
 
+# TIPs in and around (+/- 1000 bp) candiate genes
+candidate_tips <- list()
 
+for (gene in names(candidate_genes)){
 
-Filtering and variant calling
-=============================
+  chr = candidate_genes[[gene]][1]
 
-Single TIP candidate files can be filtered with filter.py. The same filters are implemented in variantcaller.py, which takes a list of TIP candidate
-files as input. Such a list can be generated by typing
+  # Add 1000 base pairs to gene coordinates to detect close TIPs
+  start = as.numeric(candidate_genes[[gene]][2]) - 1000
+  end = as.numeric(candidate_genes[[gene]][3]) + 1000
+  candidate_tips[[gene]] = subset(tips, chromosome == chr & position %in% c(start:end))
+}
 
-	$ find $PWD -type f -name "TIPs_candidates.tsv"
+# Show results
+candidate_tips
+candidate_tips$Bradi1g77130
+```
 
-in the project directory. Importantly, the output folder names will be the sample IDs in the vcf file.
+#### 2\. Combining variants into a vcf file
 
+*The variantCaller.py program is currently being updated.*
 
-License
-=======
+# License
+
 GNU General Public License v3. See LICENSE.txt for details.
