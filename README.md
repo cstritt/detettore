@@ -92,7 +92,7 @@ of the gff is assumed to be formatted as “Name=TE\_name”.
 
 ## Structure of output files
 
-*Detettore* provide a wealth of information for TIP candidates. Besides
+*Detettore* provides a wealth of information for TIP candidates. Besides
 the number of supporting discordant and split reads, the number of
 bridge reads are reported, that is, the number of reads spanning the
 insertion breakpoint and thus indicating heterozygosity or a false
@@ -155,7 +155,7 @@ detettore.py \
   -t example/TREP_consensus.Bdis.simplified.fasta \
   -r example/Bdistachyon_314_v3.0.Bd5.fa \
   -c 4
-  
+
 ```
 
 Four files should be created in the “test” folder,
@@ -203,14 +203,14 @@ tip_files <- list.files('~/github/detettore/example/tips', full.names = T, recur
 tips <- data.frame()
 
 for (f in tip_files){
-  
+
   t <- read.table(f, header=T)
-  
-  # Add accession name to table 
+
+  # Add accession name to table
   acc <- strsplit(f, split = "/")[[1]][8]
   t$acc <- as.factor(rep(acc, nrow(t)))
 
-  tips <- rbind(tips, t) 
+  tips <- rbind(tips, t)
 }
 
 # TIPs in and around (+/- 1000 bp) candiate genes
