@@ -142,7 +142,6 @@ regions.
 Test run of *detettore* on the data provided in the example folder.
 
 #### TE insertion polymorphisms
-
 ``` bash
 # Activate virtual environment
 conda activate detettore
@@ -158,9 +157,7 @@ detettore.py \
 
 ```
 
-
 #### TE absence polymorphisms
-
 ``` bash
 # activate virtual environment
 conda activate detettore
