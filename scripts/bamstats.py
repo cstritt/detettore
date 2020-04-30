@@ -80,6 +80,7 @@ def coverage_stats(bamfile, refgen):
 
     pybam = pysam.AlignmentFile(bamfile, "rb")
 
+    # Dictionary with coverage as key
     cov_d = {}
     positions_count = 0
 
@@ -93,14 +94,18 @@ def coverage_stats(bamfile, refgen):
 
         cov_d[cov] += 1
     pybam.close()
-
+    
+    # 
     dist =  []
     for k in cov_d:
         dist += cov_d[k] * [k]
 
     dist += (genome_size-len(dist)) * [0]
-
-    stats = core_dist_stats(random.sample(dist, int(1e6)))
+    
+    if len(dist) < 1e6:
+        stats = core_dist_stats(dist)
+    else:
+        stats = core_dist_stats(random.sample(dist, int(1e6)))
     return stats
 
 

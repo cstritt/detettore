@@ -899,8 +899,8 @@ def create_table(combined, bamfile):
             tabula.append(list(outline))
 
     tabula = sorted(tabula, key=lambda x: (x[0], int(x[1])))
-    with open('TIPs_candidates.tsv', 'w') as f, \
-         open('TIPs_supporting_reads.txt', 'w') as g:
+    with open('tips.tsv', 'w') as f, \
+         open('tips.supporting_reads.txt', 'w') as g:
 
         f.write('\t'.join(header) + '\n')
         g.write('discordant_left;discordant_right;split_left;split_right\n')

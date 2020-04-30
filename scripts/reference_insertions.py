@@ -252,7 +252,7 @@ def run_module(bamfile,
               'cov_stdev']
 
 
-    outfile = open('TAPs_candidates.tsv', 'w')
+    outfile = open('taps.tsv', 'w')
     outfile.write('\t'.join(header) + '\n')
 
     for candidate in out:
