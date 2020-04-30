@@ -137,41 +137,6 @@ regions.
 | region\_cov\_mean  |                                                          |
 | region\_cov\_stdev |                                                          |
 
-## Walk-through with example data
-
-Test run of *detettore* on the data provided in the example folder.
-
-#### TE insertion polymorphisms
-``` bash
-# Activate virtual environment
-conda activate detettore
-
-# Run detettore TIP module on example data
-detettore.py \
-  -b example/mapped_reads.bam \
-  -m tips \
-  -o test \
-  -t example/te_consensus.fasta \
-  -r example/reference.fasta \
-  -c 4
-
-```
-
-#### TE absence polymorphisms
-``` bash
-# activate virtual environment
-conda activate detettore
-
-# run detettore TAPs module on example data
-detettore.py \
-  -b data/mapped_reads.bam \
-  -m taps \
-  -o test \
-  -t example/te_consensus.fasta \
-  -r example/reference.fasta \
-  -a example/te_annotation.gff \
-  -c 4
-```
 
 ## Making sense of the output
 
