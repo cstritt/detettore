@@ -306,7 +306,7 @@ def is_overlapping(a,b):
         return len(intersection) / float(len(union))
 
 
-def cluster_reads(positions, overlap_proportion):
+def cluster_reads(positions, overlap_proportion, modus):
 
     """ Takes a dictionary with chromosomes as keys and ordered intervals.
     Adjacent intervals are assigned to the same cluster if they overlap at
@@ -331,7 +331,17 @@ def cluster_reads(positions, overlap_proportion):
 
             line = positions_chrmsm[i]
             name = line[0]
-            strt, end = line[1], line[2]
+            
+            
+            # add 100 bp to splitread positions. this improves the clustering of 
+            # splitreads for short DNA transposon insertions, which often come with
+            # a mapping gap such that splitreads from the 5' and 3' do not overlap
+            # anymore and don't cluster
+            
+            if modus == 'splitreads':
+                strt, end = line[1]-100, line[2]+100
+            else: 
+               strt, end = line[1], line[2]
             interval = strt, end
 
             # start of a new chromosome

@@ -82,7 +82,7 @@ def get_split_and_discordant_reads(bamfile,
 
             if chrmsm not in split_positions:
                 split_positions[chrmsm] = []
-
+            
             split_positions[chrmsm].append([name, interval[0], interval[1]])
 
         """ Discordant read pairs
@@ -260,7 +260,7 @@ def run_module(bamfile,
     anchor_positions = get_anchor_positions(discordant_hits, discordant_anchors,
                                             bamfile, isize_mean)
 
-    discordant_clusters = strumenti.cluster_reads(anchor_positions, 0.05)
+    discordant_clusters = strumenti.cluster_reads(anchor_positions, 0.05, 'discordant')
 
     discordant_clusters = strumenti.prefilter_clusters(discordant_clusters, 4)
 
@@ -279,7 +279,7 @@ def run_module(bamfile,
 
     # SPLITREADS
     print('Clustering split reads\n...')
-    split_clusters = strumenti.cluster_reads(split_positions, 0.05)
+    split_clusters = strumenti.cluster_reads(split_positions, 0.05, 'splitreads')
     split_clusters = strumenti.prefilter_clusters(split_clusters, 4)
 
     for k in sorted(split_clusters.keys()):
