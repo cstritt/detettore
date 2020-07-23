@@ -100,7 +100,7 @@ def coverage_stats(bamfile, refgen):
     for k in cov_d:
         dist += cov_d[k] * [k]
 
-    dist += (genome_size-len(dist)) * [0]
+    # dist += (genome_size-len(dist)) * [0]
     
     if len(dist) < 1e6:
         stats = core_dist_stats(dist)
