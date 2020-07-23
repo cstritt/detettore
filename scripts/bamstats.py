@@ -71,41 +71,16 @@ def core_dist_stats(dist):
     return mean, stdev
 
 
-def coverage_stats(bamfile, refgen):
-
-    chromosomes = chromosome_length(refgen)
-    genome_size = 0
-    for k in chromosomes:
-        genome_size += chromosomes[k]
+def coverage_stats(bamfile):
 
     pybam = pysam.AlignmentFile(bamfile, "rb")
-
-    # Dictionary with coverage as key
-    cov_d = {}
-    positions_count = 0
-
-    for pileupcolumn in pybam.pileup(**{"truncate":True}):
-
-        cov = pileupcolumn.nsegments
-        positions_count += 1
-
-        if not cov in cov_d:
-            cov_d[cov] = 0
-
-        cov_d[cov] += 1
+    cov = [pileupcolumn.nsegments for pileupcolumn in pybam.pileup(**{"truncate":True})]
     pybam.close()
     
-    # 
-    dist =  []
-    for k in cov_d:
-        dist += cov_d[k] * [k]
-
-    # dist += (genome_size-len(dist)) * [0]
-    
-    if len(dist) < 1e6:
-        stats = core_dist_stats(dist)
+    if len(cov) < 1e6:
+        stats = core_dist_stats(cov)
     else:
-        stats = core_dist_stats(random.sample(dist, int(1e6)))
+        stats = core_dist_stats(random.sample(cov, int(1e6)))
     return stats
 
 
