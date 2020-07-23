@@ -33,10 +33,6 @@ def get_args():
     parser.add_argument("reference",
                         help='Reference genome in fasta format.')
 
-    parser.add_argument('-prop', default = 0.001,
-                        help='Proportion of data to be used for estimating \
-                        statistics.')
-
     args = parser.parse_args()
     return args
 
@@ -84,7 +80,7 @@ def coverage_stats(bamfile):
     return stats
 
 
-def isize_stats(bamfile, proportion):
+def isize_stats(bamfile):
     """
     Takes a file containing insert sizes and calculates mean and standard
     deviation of the core distribution. Using the core distribution instead of
@@ -103,19 +99,22 @@ def isize_stats(bamfile, proportion):
             readlength = read.infer_query_length()
 
         if read.is_proper_pair:
-            if random.random() <= proportion:
-                isizes.append(abs(read.isize))
+            isizes.append(abs(read.isize))
+                
     pybam.close()
 
-    stats = core_dist_stats(isizes)
+    if len(isizes) < 1e6:
+        stats = core_dist_stats(isizes)
+    else:
+        stats = core_dist_stats(random.sample(isizes, int(1e6)))
 
     return stats, readlength
 
 
-def write_output(bamfile, proportion):
+def write_output(bamfile):
 
     cov_mean, cov_stdev = coverage_stats(bamfile)
-    isize, readlength = isize_stats(bamfile, proportion)
+    isize, readlength = isize_stats(bamfile)
 
     outlist = ['readlength\t' + str(readlength),
                'coverage_mean\t' + str(cov_mean),
@@ -135,8 +134,7 @@ def write_output(bamfile, proportion):
 def main():
 
     args = get_args()
-    write_output(args.bamfile, args.prop)
-
+    write_output(args.bamfile)
 
 if __name__ == '__main__':
     main()

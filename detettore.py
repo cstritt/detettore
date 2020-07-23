@@ -114,8 +114,7 @@ def main():
         print('Using ' + readinfo)
     else:
         print('Estimating bam read statistics\n...')
-        readinfo = bamstats.write_output(bamfile, 0.001)
-
+        readinfo = bamstats.write_output(bamfile)
 
     if 'tips' in modus:
         print('\nSearching TE insertion polymorphisms...')
