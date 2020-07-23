@@ -112,9 +112,9 @@ def isize_stats(bamfile, proportion):
     return stats, readlength
 
 
-def write_output(bamfile, refgen, proportion):
+def write_output(bamfile, proportion):
 
-    cov_mean, cov_stdev = coverage_stats(bamfile, refgen)
+    cov_mean, cov_stdev = coverage_stats(bamfile)
     isize, readlength = isize_stats(bamfile, proportion)
 
     outlist = ['readlength\t' + str(readlength),
@@ -135,7 +135,7 @@ def write_output(bamfile, refgen, proportion):
 def main():
 
     args = get_args()
-    write_output(args.bamfile, args.reference, args.prop)
+    write_output(args.bamfile, args.prop)
 
 
 if __name__ == '__main__':

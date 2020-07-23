@@ -114,7 +114,7 @@ def main():
         print('Using ' + readinfo)
     else:
         print('Estimating bam read statistics\n...')
-        readinfo = bamstats.write_output(bamfile, reference, 0.001)
+        readinfo = bamstats.write_output(bamfile, 0.001)
 
 
     if 'tips' in modus:
