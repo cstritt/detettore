@@ -79,7 +79,8 @@ python setup.py install
 | \-r           | Reference genome in fasta format                                                                                                                                            |
 | \-a           | TE annotation in bed or gff format                                                                                                                                          |
 | \-u           | Minimum difference between primary and secondary alignment score. Reads above the threshold are considered as mapping uniquely to the reference \[30\]                      |
-| \-l           | Minimum length of soft-clipped read parts \[30\]                                                                                                                            |
+| \-lSR           | Minimum length of soft-clipped read parts \[15\]                                                                                                                            |
+| \-lDR           | Minimum alignment length of discordant read-pair target hits \[50\]      
 | \-id          | Minimum sequence identity between reads and TE consensus sequences \[80\]                                                                                                   |
 | \-ws          | Word size (minimum length of best perfect match) for blasting splitreads against TEs \[11\]                                                                                 |
 | \-c           | Number of CPUs. The blast search can be run with multiple CPUs, as well as a time-consuming loop in the TAP module \[1\]                                                    |

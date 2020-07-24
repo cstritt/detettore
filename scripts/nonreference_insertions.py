@@ -13,7 +13,7 @@ from scripts import strumenti
 
 
 def get_split_and_discordant_reads(bamfile,
-                                   min_aln_len,
+                                   min_aln_len_SR,
                                    readlength,
                                    uniq_threshold):
 
@@ -33,7 +33,7 @@ def get_split_and_discordant_reads(bamfile,
 
     for read in pybam.fetch():
 
-        clipped = is_softclipped(read, min_aln_len)
+        clipped = is_softclipped(read, min_aln_len_SR)
 
         if ((read.is_proper_pair and not clipped) or
             read.is_secondary):
@@ -228,12 +228,12 @@ def run_module(bamfile,
         isize_mean = int(lines[3].split("\t")[1].strip())
 
 
-    uniq, min_aln_len, min_perc_id, word_size = thresholds
+    uniq, min_aln_len_DR, min_aln_len_SR, min_perc_id, word_size = thresholds
 
 
     print('Getting candidate split reads and discordant read pairs from bam file ...')
     reads = get_split_and_discordant_reads(bamfile,
-                                           min_aln_len,
+                                           min_aln_len_SR,
                                            readlength,
                                            uniq)
 
@@ -251,7 +251,7 @@ def run_module(bamfile,
                                  11,
                                  cpus)
 
-    discordant_hits = strumenti.hit_dictionary(blast_out, min_aln_len, 'one_hit_only')
+    discordant_hits = strumenti.hit_dictionary(blast_out, min_aln_len_DR, 'one_hit_only')
     print(' '.join([str(len(discordant_hits.keys())), 'anchor mates map to a TE.']))
 
 
@@ -287,11 +287,11 @@ def run_module(bamfile,
 
 
     print('Aligning split parts to target sequences\n...')
-    fasta = write_clipped_to_fasta(split_clusters, splitreads, min_aln_len)
+    fasta = write_clipped_to_fasta(split_clusters, splitreads, min_aln_len_SR)
 
     blast_out_split = strumenti.blastn(fasta, min_perc_id, word_size, cpus)
 
-    split_hits = strumenti.hit_dictionary(blast_out_split, min_aln_len, 'one_hit_only')
+    split_hits = strumenti.hit_dictionary(blast_out_split, min_aln_len_SR, 'one_hit_only')
     print(' '.join([str(len(split_hits.keys())), 'soft-clipped reads map to a TE.']))
 
 

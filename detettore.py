@@ -48,9 +48,13 @@ def get_args():
                         type=int, default=30,
                         help='Difference between XS and AS for a read to be considered uniquely mapped. [30]')
 
-    parser.add_argument('-l', dest='aln_len',
-                        type=int, default=30,
-                        help='Minimum alignment length for target hits. [30]')
+    parser.add_argument('-lSR', dest='aln_len_SR',
+                        type=int, default=15,
+                        help='Minimum alignment length for splitread target hits. [15]')
+    
+    parser.add_argument('-lDR', dest='aln_len_DR',
+                        type=int, default=50,
+                        help='Minimum alignment length for discordant read-pair target hits. [50]')
 
     parser.add_argument('-id', dest='perc_id',
                         type=int, default=80,
@@ -89,7 +93,7 @@ def main():
     reference = os.path.abspath(args.reference)
 
     # Alignment and mapping thresholds
-    thresholds = [args.uniq, args.aln_len, args.perc_id, args.word_size]
+    thresholds = [args.uniq, args.aln_len_DR, args.aln_len_SR, args.perc_id, args.word_size]
 
     # Program settings
     modus = args.modus

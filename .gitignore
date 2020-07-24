@@ -1,0 +1,9 @@
+.spyproject
+build
+*.egg-info
+dist
+tools
+facienda.md
+README_v1.md
+troubleshooting.txt
+scripts/__pycache__
