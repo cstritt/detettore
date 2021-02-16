@@ -9,9 +9,9 @@ April 2020
 
 The program searches for:
 
-  - **TE insertion polymorphisms (TIPs)**, i.e. TEs absent in the
+  - **TE insertion polymorphisms (TIPs)**, i.e. TEs absent in the
     reference genome but present in a sequenced individual
-  - **TE absence polymorphisms (TAPs)**, i.e. TEs present in the
+  - **TE absence polymorphisms (TAPs)**, i.e. TEs present in the
     reference but absent in a sequenced individual
 
 ## Requirements
@@ -72,15 +72,15 @@ python setup.py install
 
 | Parameter     | Explanation                                                                                                                                                                 |
 | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| \-o           | Output folder name, e.g. the sample ID                                                                                                                                      |
-| \-b           | Unfiltered (\!) bam file, i.e. including the not uniquely-mapping reads                                                                                                     |
+| \-o           | Output folder name, e.g. the sample ID                                                                                                                                      |
+| \-b           | Unfiltered (\!) bam file, i.e. including the not uniquely-mapping reads                                                                                                     |
 | \-m           | The module to run. Can be both at the same time or just one \[tips, taps\]                                                                                                  |
 | \-t           | TE consensus sequences in fasta format                                                                                                                                      |
 | \-r           | Reference genome in fasta format                                                                                                                                            |
 | \-a           | TE annotation in bed or gff format                                                                                                                                          |
 | \-u           | Minimum difference between primary and secondary alignment score. Reads above the threshold are considered as mapping uniquely to the reference \[30\]                      |
-| \-lSR           | Minimum length of soft-clipped read parts \[15\]                                                                                                                            |
-| \-lDR           | Minimum alignment length of discordant read-pair target hits \[50\]      
+| \-lSR         | Minimum length of soft-clipped read parts \[15\]                                                                                                                            |
+| \-lDR         | Minimum alignment length of discordant read-pair target hits \[50\]      
 | \-id          | Minimum sequence identity between reads and TE consensus sequences \[80\]                                                                                                   |
 | \-ws          | Word size (minimum length of best perfect match) for blasting splitreads against TEs \[11\]                                                                                 |
 | \-c           | Number of CPUs. The blast search can be run with multiple CPUs, as well as a time-consuming loop in the TAP module \[1\]                                                    |
@@ -89,7 +89,7 @@ python setup.py install
 
 **Naming conventions**  
 If a gff file is used in the TAP module, the TE name in the last column
-of the gff is assumed to be formatted as “Name=TE\_name”.
+of the gff is assumed to be formatted as “Name=TE\_name”. If not the case, the regex search will throw an AttributeError.
 
 ## Structure of output files
 
