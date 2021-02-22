@@ -8,6 +8,7 @@ Copyright (C) 2018 C. Stritt
 License: GNU General Public License v3. See LICENSE.txt for details.
 """
 
+
 import pysam
 import re
 import statistics
@@ -93,18 +94,21 @@ class feature_summary:
 
         i = self.indx
 
-        outline = [annotation[i].chromosome,
-                   annotation[i].start,
-                   annotation[i].end,
-                   annotation[i].id,
-                   annotation[i].strand,
-                   self.length,
-                   self.isize,
-                   self.nr_deviant,
-                   self.start,
-                   self.end,
-                   self.cov_mean,
-                   self.cov_stdev]
+        outline = [
+            annotation[i].chromosome,
+            annotation[i].start,
+            annotation[i].end,
+            annotation[i].id,
+            annotation[i].strand,
+            self.length,
+            self.isize,
+            self.nr_deviant,
+            self.start,
+            self.end,
+            self.cov_mean,
+            self.cov_stdev
+            ]
+
 
         return map(str, outline)
 
@@ -152,8 +156,13 @@ def extract_deviant_reads(region, isize_stats, bamfile, mapq):
     return out
 
 
-def process_taps(annot_entry, isize_stats, bamfile,
-                 contigs, uniq, reconstruct):
+def process_taps(
+        annot_entry,
+        isize_stats,
+        bamfile,
+        contigs,
+        uniq,
+        reconstruct):
 
     """ Check if there are deviant read-pairs around the annotated feature
     """
@@ -179,12 +188,8 @@ def process_taps(annot_entry, isize_stats, bamfile,
         return None
 
     cov_mean, cov_stdev = strumenti.local_cov(region, bamfile)
-    summary = feature_summary([i,
-                               feature_length,
-                               region_start,
-                               region_end,
-                               cov_mean,
-                               cov_stdev])
+    summary = feature_summary(
+        [i, feature_length, region_start, region_end, cov_mean, cov_stdev])
 
     if deviant['name']:
         summary.add_deviant_info(deviant)
@@ -192,13 +197,14 @@ def process_taps(annot_entry, isize_stats, bamfile,
     return summary
 
 
-def run_module(bamfile,
-               readinfo,
-               annotation_file,
-               reference,
-               thresholds,
-               reconstruct,
-               cpus):
+def run_module(
+        bamfile,
+        readinfo,
+        annotation_file,
+        reference,
+        thresholds,
+        reconstruct,
+        cpus):
 
     """ Read in annotation and read information
     """
@@ -238,22 +244,6 @@ def run_module(bamfile,
                     uniq,
                     reconstruct) for i in inputs)
 
-    header = ['chromosome',
-              'feature_start',
-              'feature_end',
-              'feature_id',
-              'feature_strand',
-              'feature_length',
-              'isize',
-              'nr_deviant',
-              'absence_start',
-              'absence_end',
-              'cov_mean',
-              'cov_stdev']
-
-
-    outfile = open('taps.tsv', 'w')
-    outfile.write('\t'.join(header) + '\n')
 
     for candidate in out:
 
@@ -275,16 +265,19 @@ def run_module(bamfile,
             # easiest case: the whole element is absent
             if candidate.isize > candidate.length:
 
-
                 """ Check if there are reads spanning the breakpoints
                 """
-                start_overlap = strumenti.overlapping_reads(chromosome,
-                                                            element_start,
-                                                            bamfile, 20)
+                start_overlap = strumenti.overlapping_reads(
+                    chromosome,
+                    element_start,
+                    bamfile,
+                    20)
 
-                end_overlap = strumenti.overlapping_reads(chromosome,
-                                                          element_end,
-                                                          bamfile, 20)
+                end_overlap = strumenti.overlapping_reads(
+                    chromosome,
+                    element_end,
+                    bamfile,
+                    20)
 
                 if start_overlap + end_overlap == 0 and \
                    (candidate.length - 5*isize_stdev) < candidate.isize < (candidate.length + 5*isize_stdev):

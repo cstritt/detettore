@@ -19,7 +19,6 @@ import statistics
 import random
 
 from math import fabs
-from Bio import SeqIO
 
 
 def get_args():
@@ -30,27 +29,17 @@ def get_args():
     parser.add_argument("bamfile",
                         help='bwa mem alignment to reference genome.')
 
-    parser.add_argument("reference",
-                        help='Reference genome in fasta format.')
-
     args = parser.parse_args()
     return args
 
 
-def chromosome_length(fasta):
-    chromosomes = {}
-
-    for seq_record in SeqIO.parse(fasta, 'fasta'):
-        chromosomes[seq_record.id] = len(seq_record)
-
-    return chromosomes
-
-
 def core_dist_stats(dist):
-    """ Get the core of a distributions and calculates its moments. The core
+    """
+    Get the core of a distributions and calculate its moments. The core
     rather than the full distribution is used in order to mitigate the
     influence if coverage and insert size outliers in the bam file.
     """
+
     # Median absolute deviation
     median = statistics.median(dist)
     abs_deviations = [fabs(x - median) for x in dist]
@@ -68,11 +57,21 @@ def core_dist_stats(dist):
 
 
 def coverage_stats(bamfile):
+    """
+    Create list with coverage at every single position. If the list is longer than
+    1e6, use random sample to estimate coverage statistics.
+
+    To do: only use first chromosome, traverse bam only once for coverage and isize stats
+    count_coverage function.
+
+    """
 
     pybam = pysam.AlignmentFile(bamfile, "rb")
-    cov = [pileupcolumn.nsegments for pileupcolumn in pybam.pileup(**{"truncate":True})]
+    first_chromosome = pybam.get_reference_name(0)
+
+    cov = [pileupcolumn.nsegments for pileupcolumn in pybam.pileup(reference=first_chromosome, **{"truncate":True})]
     pybam.close()
-    
+
     if len(cov) < 1e6:
         stats = core_dist_stats(cov)
     else:
@@ -82,25 +81,29 @@ def coverage_stats(bamfile):
 
 def isize_stats(bamfile):
     """
-    Takes a file containing insert sizes and calculates mean and standard
+    Get insert sizes of properly paired reads, calculate mean and standard
     deviation of the core distribution. Using the core distribution instead of
-    all data mitigates the influence of outliers (source: Piccard toolbox)
+    all data mitigates the influence of outliers (source: Piccard toolbox).
+
+    A second traversal of the bam file is required because here reads are traversed rather
+    than positions, as in the coverage_stats function.
 
     """
 
     pybam = pysam.AlignmentFile(bamfile, "rb")
+    first_chromosome = pybam.get_reference_name(0)
 
     isizes = list()
     readlength = int()
 
-    for read in pybam.fetch():
+    for read in pybam.fetch(reference=first_chromosome):
 
         while not readlength:
             readlength = read.infer_query_length()
 
         if read.is_proper_pair:
             isizes.append(abs(read.isize))
-                
+
     pybam.close()
 
     if len(isizes) < 1e6:
@@ -116,15 +119,18 @@ def write_output(bamfile):
     cov_mean, cov_stdev = coverage_stats(bamfile)
     isize, readlength = isize_stats(bamfile)
 
-    outlist = ['readlength\t' + str(readlength),
-               'coverage_mean\t' + str(cov_mean),
-               'coverage_stdev\t' + str(cov_stdev),
-               'isize_mean\t' + str(isize[0]),
-               'isize_stdev\t' + str(isize[1])]
+    outlist = [
+        'readlength\t' + str(readlength),
+        'coverage_mean\t' + str(cov_mean),
+        'coverage_stdev\t' + str(cov_stdev),
+        'isize_mean\t' + str(isize[0]),
+        'isize_stdev\t' + str(isize[1])
+        ]
 
     basename = bamfile.split('/')[-1].split('.')[0]
     outfile = basename + '_bamstats.txt'
     with open(outfile, 'w') as f:
+
         for line in outlist:
             print(line)
             f.write(line + '\n')
@@ -134,7 +140,8 @@ def write_output(bamfile):
 def main():
 
     args = get_args()
-    write_output(args.bamfile)
+    bamfile = args.bamfile
+    write_output(bamfile)
 
 if __name__ == '__main__':
     main()

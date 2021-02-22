@@ -12,14 +12,19 @@ import pysam
 from scripts import strumenti
 
 
-def get_split_and_discordant_reads(bamfile,
-                                   min_aln_len_SR,
-                                   readlength,
-                                   uniq_threshold):
+def get_split_and_discordant_reads(
+        bamfile,
+        min_aln_len_SR,
+        readlength,
+        uniq_threshold
+        ):
 
     """ Extract discordant read pairs in which at least one read maps uniquely
     to the reference, i.e. AS - XS > uniqueness_threshold. Write uniquely
     mapping reads to anchors dicitonary, their mate to fasta file.
+    
+    To do: make compatible with minimap2
+    
 
     """
     pybam = pysam.AlignmentFile(bamfile, "rb")
@@ -35,8 +40,7 @@ def get_split_and_discordant_reads(bamfile,
 
         clipped = is_softclipped(read, min_aln_len_SR)
 
-        if ((read.is_proper_pair and not clipped) or
-            read.is_secondary):
+        if (read.is_proper_pair and not clipped) or read.is_secondary:
             continue
 
         name = read.query_name
@@ -136,7 +140,8 @@ def get_split_and_discordant_reads(bamfile,
 
 
 def is_softclipped(read, min_clip_length):
-    """ Return FALSE if read is not clipped.
+    """ 
+    Return FALSE if read is not clipped.
     Only reads are used where exactly one end is clipped off and not both;
     and where the clipped part => min_clip_length
     """
@@ -158,7 +163,8 @@ def is_softclipped(read, min_clip_length):
 
 def get_anchor_positions(hits, anchors, bamfile, isize):
 
-    """ Go through the blast hits and get the corresponding anchor positions
+    """ 
+    Go through the blast hits and get the corresponding anchor positions
     """
 
     pybam = pysam.AlignmentFile(bamfile, "rb")
@@ -210,16 +216,12 @@ def write_clipped_to_fasta(clusters, reads, min_clip_length):
     return fasta
 
 
-def run_module(bamfile,
-               targets,
-               thresholds,
-               readinfo,
-               cpus):
-
-
-    with open(readinfo) as f:
-            line = next(f)
-            readlength = int(line.split("\t")[1])
+def run_module(
+        bamfile,
+        targets,
+        thresholds,
+        readinfo,
+        cpus):
 
 
     with open(readinfo) as f:
@@ -227,22 +229,21 @@ def run_module(bamfile,
         readlength = int(lines[0].split("\t")[1].strip())
         isize_mean = int(lines[3].split("\t")[1].strip())
 
-
-    uniq, min_aln_len_DR, min_aln_len_SR, min_perc_id, word_size = thresholds
+    uniq, aln_len_DR, aln_len_SR, min_perc_id, word_size = thresholds
 
 
     print('Getting candidate split reads and discordant read pairs from bam file ...')
     reads = get_split_and_discordant_reads(bamfile,
-                                           min_aln_len_SR,
+                                           aln_len_SR,
                                            readlength,
                                            uniq)
 
     discordant_anchors, splitreads, split_positions = reads
 
-    print('Analysis begins with ' + str(len(discordant_anchors)) +
-          ' discordant pairs and ' + str(len(splitreads)) + ' splitreads')
-
-
+    print('Analysis begins with %i discordant read pairs and %i splitreads' % \
+          (len(discordant_anchors), len(splitreads)))
+        
+        
     # DISCORDANT READS
     print('Aligning discordant reads to target sequences\n...')
     strumenti.create_blastdb(targets)
@@ -251,9 +252,8 @@ def run_module(bamfile,
                                  11,
                                  cpus)
 
-    discordant_hits = strumenti.hit_dictionary(blast_out, min_aln_len_DR, 'one_hit_only')
+    discordant_hits = strumenti.hit_dictionary(blast_out, aln_len_DR, 'one_hit_only')
     print(' '.join([str(len(discordant_hits.keys())), 'anchor mates map to a TE.']))
-
 
 
     print('Clustering discordant reads\n...')
@@ -287,19 +287,20 @@ def run_module(bamfile,
 
 
     print('Aligning split parts to target sequences\n...')
-    fasta = write_clipped_to_fasta(split_clusters, splitreads, min_aln_len_SR)
+    fasta = write_clipped_to_fasta(split_clusters, splitreads, aln_len_SR)
 
     blast_out_split = strumenti.blastn(fasta, min_perc_id, word_size, cpus)
 
-    split_hits = strumenti.hit_dictionary(blast_out_split, min_aln_len_SR, 'one_hit_only')
+    split_hits = strumenti.hit_dictionary(blast_out_split, aln_len_SR, 'one_hit_only')
     print(' '.join([str(len(split_hits.keys())), 'soft-clipped reads map to a TE.']))
 
 
     # COMBINE DISCORDANT READS AND SPLITREADS
-    combined = strumenti.add_splitread_evidence(cluster_summaries,
-                                                         split_clusters,
-                                                         splitreads,
-                                                         split_hits,
-                                                         discordant_cluster_positions)
+    combined = strumenti.add_splitread_evidence(
+        cluster_summaries,
+        split_clusters,
+        splitreads,
+        split_hits,
+        discordant_cluster_positions)
 
-    strumenti.create_table(combined, bamfile)
+    return combined

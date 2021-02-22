@@ -14,6 +14,7 @@ import shutil
 from scripts import nonreference_insertions
 from scripts import reference_insertions
 from scripts import bamstats
+from scripts import strumenti
 
 
 def get_args():
@@ -51,7 +52,7 @@ def get_args():
     parser.add_argument('-lSR', dest='aln_len_SR',
                         type=int, default=15,
                         help='Minimum alignment length for splitread target hits. [15]')
-    
+
     parser.add_argument('-lDR', dest='aln_len_DR',
                         type=int, default=50,
                         help='Minimum alignment length for discordant read-pair target hits. [50]')
@@ -108,45 +109,69 @@ def main():
         pass
     os.chdir(args.outfolder)
 
-    # Get readlength, estimate mean coverage and insert size
+    #%% Get readlength, estimate mean coverage and insert size
     readinfo = [f for f in os.listdir('.') if f.endswith('_bamstats.txt')]
+
     if readinfo:
         readinfo = readinfo[0]
         print('Using ' + readinfo)
+
     elif args.bamstats:
         readinfo = args.bamstats
         print('Using ' + readinfo)
+
     else:
         print('Estimating bam read statistics\n...')
         readinfo = bamstats.write_output(bamfile)
 
+    #%% Run TIPs module
     if 'tips' in modus:
         print('\nSearching TE insertion polymorphisms...')
-        nonreference_insertions.run_module(bamfile,
-                                           targets,
-                                           thresholds,
-                                           readinfo,
-                                           cpus)
+
+        tips_out = nonreference_insertions.run_module(
+            bamfile,
+            targets,
+            thresholds,
+            readinfo,
+            cpus)
 
         shutil.rmtree('blastdb')
         if not args.keep:
-            for g in ['discordant.fasta', 'discordant.fasta.blast',
-                      'softclipped.fasta', 'softclipped.fasta.blast']:
+            for g in [
+                    'discordant.fasta',
+                    'discordant.fasta.blast',
+                     'softclipped.fasta',
+                     'softclipped.fasta.blast'
+                     ]:
                 os.remove(g)
 
         print('TIP search finished successfully\n')
 
-
+    #%% Run TAPs module
     if 'taps' in modus:
         print('Searching TE absence polymorphisms')
-        reference_insertions.run_module(bamfile,
-                                        readinfo,
-                                        annotation_file,
-                                        reference,
-                                        thresholds,
-                                        reconstruct,
-                                        cpus)
+
+        taps_out = reference_insertions.run_module(
+            bamfile,
+            readinfo,
+            annotation_file,
+            reference,
+            thresholds,
+            reconstruct,
+            cpus)
         print('TAP search finished successfully\n')
+
+
+    #%% Write output and log file
+
+
+    strumenti.tip_output_table(tips_out, bamfile)
+
+
+
+
+
+
 
 
     # Create log file

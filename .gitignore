@@ -9,3 +9,5 @@ troubleshooting.txt
 scripts/__pycache__
 detettore.step-by-step.Rmd
 variantcaller2.py
+tst
+load_test_params.py

@@ -161,7 +161,7 @@ def add_sample(path, d, accs, filtri):
                 d[x.chr][x.pos].append(x)
                 cnt += 1
 
-        print '%i TIPs retained after filtering in %s' % (cnt, accession)
+        print( '%i TIPs retained after filtering in %s' % (cnt, accession) )
         return d, accs
 
 
@@ -194,7 +194,7 @@ def cluster_TIP_positions(d, window_size):
 
     print('\n# of TIPs in a window: # of windows with that many TIPs')
     for k in sorted(cluster_sizes.keys()):
-        print str(k) + ': ' + str(cluster_sizes[k])
+        print (str(k) + ': ' + str(cluster_sizes[k]))
 
     return clusters
 

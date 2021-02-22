@@ -14,6 +14,9 @@ import statistics
 import subprocess
 import pysam
 
+from Bio import SeqIO
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
 from math import fabs
 from random import random
 from collections import Counter
@@ -308,7 +311,8 @@ def is_overlapping(a,b):
 
 def cluster_reads(positions, overlap_proportion, modus):
 
-    """ Takes a dictionary with chromosomes as keys and ordered intervals.
+    """
+    Takes a dictionary with chromosomes as keys and ordered intervals.
     Adjacent intervals are assigned to the same cluster if they overlap at
     least by the specified overlap_proportion. The latter is an important
     parameter, since if defined too loosely, read clusters might include
@@ -331,16 +335,15 @@ def cluster_reads(positions, overlap_proportion, modus):
 
             line = positions_chrmsm[i]
             name = line[0]
-            
-            
-            # add 100 bp to splitread positions. this improves the clustering of 
+
+            # add 100 bp to splitread positions. this improves the clustering of
             # splitreads for short DNA transposon insertions, which often come with
             # a mapping gap such that splitreads from the 5' and 3' do not overlap
             # anymore and don't cluster
-            
+
             if modus == 'splitreads':
                 strt, end = line[1]-100, line[2]+100
-            else: 
+            else:
                strt, end = line[1], line[2]
             interval = strt, end
 
@@ -484,6 +487,10 @@ def clip_seq(seq, cigar):
 
 def summarize_cluster(cluster, read_dictionary, hits, modus, weight):
 
+    """
+
+    """
+
     summary = {}
 
     for readname in cluster:
@@ -494,6 +501,7 @@ def summarize_cluster(cluster, read_dictionary, hits, modus, weight):
         read = read_dictionary[readname]
         cigar = read.cigartuples
 
+        # Strand
         if modus == 'discordant':
             if read.is_reverse:
                 s = 1
@@ -574,11 +582,13 @@ def combine_hits_and_anchors(clusters,
     return summaries, posizioni
 
 
-def add_splitread_evidence(cluster_summaries,
-                           split_clusters,
-                           splitreads,
-                           split_hits,
-                           discordant_cluster_positions):
+def add_splitread_evidence(
+        cluster_summaries,
+        split_clusters,
+        splitreads,
+        split_hits,
+        discordant_cluster_positions
+        ):
 
     """ Add split read information to existing discordant read summaries
     or create new summaries if the split read cluster does not overlap with
@@ -774,22 +784,107 @@ def overlapping_reads(chromosome, position, bamfile, overlap):
     return len(bridge_reads)
 
 
-def create_table(combined, bamfile):
 
-    header = ['chromosome',
-              'position',
-              'TE',
-              'strand',
-              'nr_supporting_reads',
-              'nr_discordant_reads',
-              'nr_splitreads',
-              'nr_aligned_positions',
-              'TSD',
-              'nr_bridge_reads',
-              'region_start',
-              'region_end',
-              'region_cov_mean',
-              'region_cov_stdev']
+# def write_vcf(tips_out, taps_out, reference):
+
+#     """ Write VCF file for single strain/accession.
+#     """
+
+#     import time
+#     date = time.strftime("%d/%m/%Y")
+
+#     metainfo = [
+
+#         '##fileFormat=VCFv4.2',
+#         '##fileDate=(%s)' % date,
+#         '##source==detettore v0.6',
+#         '##reference=%s' % reference,
+#         '##contig=<ID=%s,length=%i,assembly=%s>',
+
+#         '##INFO=<ID=IMPRECISE,Number=0,Type=Flag,Description="Imprecise structural variation">',
+#         '##INFO=<ID=END,Number=1,Type=Integer,Description="End position of the variant described in this record">',
+#         '##INFO=<ID=NOVEL,Number=0,Type=Flag,Description="Indicates a novel structural variation">',
+#         '##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type of structural variant">',
+#         '##INFO=<ID=SVLEN,Number=.,Type=Integer,Description="Difference in length between REF and ALT alleles">',
+#         '##INFO=<ID=HOMLEN,Number=.,Type=Integer,Description="Length of base pair identical micro-homology at event breakpoints">',
+#         '##INFO=<ID=HOMSEQ,Number=.,Type=String,Description="Sequence of base pair identical micro-homology at event breakpoints">',
+#         '##INFO=<ID=MEINFO,Number=4,Type=String,Description="Mobile element info of the form NAME,START,END,POLARITY">',
+#         '##INFO=<ID=DPADJ,Number=.,Type=Integer,Description="Read Depth of adjacency">',
+
+#         '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
+#         '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality according to Li 2001">',
+#         '##FORMAT=<ID=DP,Number=2,Type=Integer,Description="Supporting reads. For insertions, this is the \
+#             sum of discordant read pairs and splitreads, for deletions it is the nr of read pairs \
+#             with deviant insert sizes">',
+#         '##FORMAT=<ID=DR,Number=2,Type=Integer,Description="Discordant reads">',
+#         '##FORMAT=<ID=SR,Number=2,Type=Integer,Description="Split reads">',
+#         '##FORMAT=<ID=BR,Number=2,Type=Integer,Description="<Number of reads bridgin the insertion breakpoint">',
+#         '##FORMAT=<ID=AL,Number=1,Type=Integer,Description="TE alignment length">',
+
+#         '##ALT=<ID=INS:ME,Description=description>',
+#         '##ALT=<ID=DEL:ME,Description=description>'^
+#         ]
+
+#     # TAPs
+#     #if taps_out:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#     # TIPs
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def tip_output_table(combined, bamfile):
+
+    """ Write final output table.
+
+   To do: replace with single vcf output for TIPs and TAPs!
+    """
+
+    header = [
+        'chromosome',
+        'position',
+        'TE',
+        'strand',
+        'nr_supporting_reads',
+        'nr_discordant_reads',
+        'nr_splitreads',
+        'nr_aligned_positions',
+        'TSD',
+        'nr_bridge_reads',
+        'region_start',
+        'region_end',
+        'region_cov_mean',
+        'region_cov_stdev']
 
     tabula = []
 
@@ -889,21 +984,23 @@ def create_table(combined, bamfile):
                            ','.join(s_anchors_l) + ';' +\
                            ','.join(s_anchors_r)
 
-            outline = [chrmsm,
-                       position,
-                       target_name,
-                       strand,
-                       support,
-                       nr_discordant,
-                       nr_splitreads,
-                       nr_aln,
-                       TSD,
-                       n_bridge_reads,
-                       region_start,
-                       region_end,
-                       region_coverage[0],
-                       region_coverage[1],
-                       anchor_reads]
+            outline = [
+                chrmsm,
+                position,
+                target_name,
+                strand,
+                support,
+                nr_discordant,
+                nr_splitreads,
+                nr_aln,
+                TSD,
+                n_bridge_reads,
+                region_start,
+                region_end,
+                region_coverage[0],
+                region_coverage[1],
+                anchor_reads
+                ]
 
             outline = map(str, outline)
             tabula.append(list(outline))
@@ -917,3 +1014,111 @@ def create_table(combined, bamfile):
         for line in tabula:
             f.write('\t'.join(line[:-1]) + '\n')
             g.write(line[-1] + '\n')
+
+
+
+def tap_output_table(out, annot, bamfile):
+    """
+
+    """
+    header = [
+        'chromosome',
+        'feature_start',
+        'feature_end',
+        'feature_id',
+        'feature_strand',
+        'feature_length',
+        'isize',
+        'nr_deviant',
+        'absence_start',
+        'absence_end',
+        'cov_mean',
+        'cov_stdev'
+        ]
+
+    recs = []
+
+    outfile = open('taps.tsv', 'w')
+    outfile.write('\t'.join(header) + '\n')
+
+    for candidate in out:
+
+        if candidate == None:
+             continue
+
+        """ If there are deviant read pairs, check if the whole element
+        or a part of it is missing
+        """
+
+        is_tap = False
+
+        if candidate.nr_deviant > 0:
+
+            chromosome = annot[candidate.indx].chromosome
+            element_start = annot[candidate.indx].start
+            element_end = annot[candidate.indx].end
+
+            # easiest case: the whole element is absent
+            if candidate.isize > candidate.length:
+
+
+                """ Check if there are reads spanning the breakpoints
+                """
+                start_overlap = overlapping_reads(chromosome,
+                                                            element_start,
+                                                            bamfile, 20)
+
+                end_overlap = overlapping_reads(chromosome,
+                                                          element_end,
+                                                          bamfile, 20)
+
+                if start_overlap + end_overlap == 0 and \
+                   (candidate.length - 5*isize_stdev) < candidate.isize < (candidate.length + 5*isize_stdev):
+                    """ Way too restrictive in previous version (2*isize_stdev)"""
+
+                    outline = candidate.write(annot)
+                    outfile.write('\t'.join(outline) + '\n')
+                    is_tap = True
+
+
+        if not is_tap and reconstruct:
+
+            annot_row = annot[candidate.indx]
+            region = [annot_row.chromosome, annot_row.start, annot_row.end]
+            seq, known = candidate.reconstruct(region, bamfile, filters)
+
+            # How many reads bridge the start and end of the TE?
+            five_bridge = overlapping_reads(annot_row.chromosome,
+                                                      annot_row.start,
+                                                      bamfile, 20)
+
+            three_bridge = overlapping_reads(annot_row.chromosome,
+                                                      annot_row.end,
+                                                      bamfile, 20)
+
+            infofield = 'covered:%s,five_nbridge:%s,three_nbridge:%s' % (known, five_bridge, three_bridge)
+
+            seqrec = SeqRecord(Seq(seq),
+                            id = '_'.join(map(str,region)),
+                            name = annot_row.id,
+                            description = infofield)
+            recs.append(seqrec)
+
+    if reconstruct:
+        SeqIO.write(recs, 'omnipresent.fasta', 'fasta')
+
+    outfile.close()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
