@@ -8,66 +8,83 @@ Copyright (C) 2018 C. Stritt
 License: GNU General Public License v3. See LICENSE.txt for details.
 """
 
-
 import pysam
 import re
 import statistics
 
 from Bio import SeqIO
-from Bio.Seq import Seq
-from Bio.SeqRecord import SeqRecord
 from collections import Counter
 from joblib import Parallel, delayed
 from scipy.stats import norm
 from scripts import strumenti
 
 
-class annotation_entry:
-    def __init__(self, line, file_format):
+class annotation:
 
-        fields = line.strip().split('\t')
+    def __init__(self, file_path):
 
-        if file_format == 'bed':
-            self.chromosome = fields[0]
-            self.start = int(fields[1])
-            self.end = int(fields[2])
-            self.id = fields[3]
-            self.strand = fields[5]
-
-        elif file_format == 'gff':
-            self.chromosome = fields[0]
-            self.start = int(fields[3])
-            self.end = int(fields[4])
-            self.id = re.search(r'Name=(.*?)[;\n]', line).group(1)
-            self.feature = fields[2]
-            self.strand = fields[6]
-
-        else:
+        # Check file format
+        self.file_path = file_path
+        self.format = file_path.split('.')[-1]
+        if not self.format.startswith('gff') or self.format.startswith('bed'):
             print('Check annotation format.')
 
+        # Read in annotation
+        self.annot = []
+        with open(self.file_path) as f:
+            for line in f:
+                if line.startswith('#'):
+                    continue
 
-class feature_summary:
+                fields = line.strip().split()
+
+                if self.format.startswith('bed'):
+
+                    entry = {
+                        'chromosome' : fields[0],
+                        'start' : int(fields[1]),
+                        'end' :  int(fields[2]),
+                        'id' : fields[3],
+                        'strand' : fields[5]
+                        }
+
+                elif self.format.startswith('gff'):
+
+                    entry = {
+                        # GFF uses 1-based indexing!
+                        'chromosome' : fields[0],
+                        'start' : int(fields[3]),
+                        'end' : int(fields[4]),
+                        'id' : fields[-1].split(';')[0].split('=')[-1],
+                        'strand' : fields[6]
+                        }
+
+                self.annot.append(entry)
+
+
+class TAP_candidate:
+
     def __init__(self, fields):
 
-        self.indx = fields[0]
-        self.length = fields[1]
+        self.annotated_TE = {
+            'indx' : fields[0],
+            'length'  : fields[1]
+            }
 
-        # coverage in the surrounding region
-        self.region_start = fields[2]
-        self.region_end = fields[3]
-        self.cov_mean = fields[4]
-        self.cov_stdev = fields[5]
+        self.context = {
+            'region_start' : fields[2],
+            'region_end' : fields[3],
+            'mean_coverage' : fields[4]
+            }
 
-        # slots to be filled if there are deviant read pairs
-        self.nr_deviant = int()
-        self.deviation = int()
-        self.start = int()
-        self.end = int()
-
-        # slots to be filled if the feature should be reconstructed
-        self.known = float()
-        self.seq = str()
-
+        self.deviant_reads = {
+            'nr_deviant' : int(),
+            'deviation' : int(),
+            'start' : int(),
+            'end' : int(),
+            'mapq_f' : [],
+            'mapq_r' : []
+            }
 
     def add_deviant_info(self, deviant_summary):
 
@@ -79,38 +96,8 @@ class feature_summary:
         except ValueError:
             pass
 
+    #def add_reference_support(self):
 
-    def reconstruct(self, region, bamfile, filters):
-
-        seq = strumenti.consensus_from_bam(region, bamfile, filters)
-        counts = Counter(seq)
-        unknown = counts['N']
-        known_proportion = 1 - (unknown/float(len(seq)))
-        known = known_proportion
-        return seq, known
-
-
-    def write(self, annotation):
-
-        i = self.indx
-
-        outline = [
-            annotation[i].chromosome,
-            annotation[i].start,
-            annotation[i].end,
-            annotation[i].id,
-            annotation[i].strand,
-            self.length,
-            self.isize,
-            self.nr_deviant,
-            self.start,
-            self.end,
-            self.cov_mean,
-            self.cov_stdev
-            ]
-
-
-        return map(str, outline)
 
 
 def extract_deviant_reads(region, isize_stats, bamfile, mapq):
@@ -122,38 +109,48 @@ def extract_deviant_reads(region, isize_stats, bamfile, mapq):
 
     chromosome, start, end = region
 
-    out = {'name':[], 'f_strand_ends':[], 'r_strand_starts':[], 'isizes':[]}
-
-    skip = set()
+    deviant_read_pairs = {}
 
     for read in pybam.fetch(chromosome, start, end):
 
         name = read.query_name
-        # read pair already considered
-        if name in skip:
+
+        # bad read pair
+        if read.mapping_quality < mapq or not read.is_paired:
             continue
-        # bad read
-        if read.is_secondary or not read.is_paired or read.mapq < mapq:
-            skip.add(name)
+
+        # discard non-properly oriented reads
+        if (read.mate_is_reverse and read.is_reverse) or \
+            (not read.is_reverse and not read.mate_is_reverse):
             continue
+
         # insert size not deviant
         isize = abs(read.template_length) - (2*readlength)
         if not (isize > q_upper and isize < 30000):
-            skip.add(name)
             continue
 
-        """ Get 'neat deviant reads with 5' on forward and 3' on reverse
-        """
-        if read.mate_is_reverse and not read.is_reverse:
 
-            out['name'].append(name)
-            out['isizes'].append(isize)
-            out['f_strand_ends'].append(read.reference_end)
-            out['r_strand_starts'].append(read.next_reference_start)
-            skip.add(name)
+        """ Get neat deviant reads with 5' on forward and 3' on reverse
+        """
+
+        if not read.is_reverse and read.mate_is_reverse:
+            deviant_read_pairs[name] = [isize, read]
+
+        elif name in deviant_read_pairs and read.is_reverse and not read.mate_is_reverse:
+            deviant_read_pairs[name].append(read)
 
     pybam.close()
-    return out
+
+    remove = []
+
+    for name in deviant_read_pairs:
+        if len(deviant_read_pairs[name]) != 3:
+            remove.append(name)
+
+    for name in remove:
+        deviant_read_pairs.pop(name)
+
+    return deviant_read_pairs
 
 
 def process_taps(
@@ -161,8 +158,7 @@ def process_taps(
         isize_stats,
         bamfile,
         contigs,
-        uniq,
-        reconstruct):
+        uniq):
 
     """ Check if there are deviant read-pairs around the annotated feature
     """
@@ -170,26 +166,36 @@ def process_taps(
     i, feature = annot_entry
     isize_mean, isize_stdev, readlength = isize_stats
 
-    region_start = feature.start - (isize_mean + isize_stdev)
-    region_end = feature.end + (isize_mean + isize_stdev)
+    region_start = feature['start'] - (isize_mean + isize_stdev)
+    region_end = feature['end'] + (isize_mean + isize_stdev)
 
     # Reset coordinates if they are 'outside' chromosomes
     if region_start < 0:
         region_start = 0
-    if region_end > contigs[feature.chromosome]:
-        region_end = contigs[feature.chromosome] - 1
 
-    region = (feature.chromosome, region_start, region_end)
+    if region_end > len(contigs[feature['chromosome']]):
+        region_end = len(contigs[feature['chromosome']]) - 1
 
-    feature_length = feature.end - feature.start
+    region = (feature['chromosome'], region_start, region_end)
+
+    feature_length = feature['end'] - feature['start']
+
+
     deviant = extract_deviant_reads(region, isize_stats, bamfile, uniq)
 
-    if not deviant['name'] and not reconstruct:
+    if not deviant['name']:
         return None
 
     cov_mean, cov_stdev = strumenti.local_cov(region, bamfile)
-    summary = feature_summary(
-        [i, feature_length, region_start, region_end, cov_mean, cov_stdev])
+
+    summary = TAP_candidate([
+        i,
+        feature_length,
+        region_start,
+        region_end,
+        cov_mean
+        ])
+
 
     if deviant['name']:
         summary.add_deviant_info(deviant)
@@ -197,25 +203,20 @@ def process_taps(
     return summary
 
 
+#%%
+
 def run_module(
         bamfile,
         readinfo,
         annotation_file,
         reference,
         thresholds,
-        reconstruct,
         cpus):
 
     """ Read in annotation and read information
     """
-    annot = []
-    file_format = annotation_file.split('.')[-1]
-    with open(annotation_file) as f:
-        for line in f:
-            if line.startswith('#'):
-                continue
-            annot_row = annotation_entry(line, file_format)
-            annot.append(annot_row)
+
+    reference_TEs = annotation(annotation_file)
 
     with open(readinfo) as f:
         readlength = int(next(f).split('\t')[1])
@@ -227,23 +228,21 @@ def run_module(
     isize_stats = (isize_mean, isize_stdev, readlength)
     uniq = thresholds[0]
 
-    contigs = {seq_record.id: len(seq_record) for seq_record in SeqIO.parse(reference, "fasta")}
-
-    baseq, mapq = 20, 30
-    filters = [baseq, mapq]
-    recs = []
-
+    contigs = {seq_record.id: seq_record.seq for seq_record in SeqIO.parse(reference, "fasta")}
 
     print('Extracting read pairs with deviant insert sizes around annotated features\n...')
-    inputs = [(i, x) for i, x  in enumerate(annot)]
-    out = Parallel(n_jobs=cpus)(delayed(process_taps)\
-                   (i,
-                    isize_stats,
-                    bamfile,
-                    contigs,
-                    uniq,
-                    reconstruct) for i in inputs)
+    inputs = [(i, x) for i, x  in enumerate(reference_TEs.annot)]
+    TAP_candidates = Parallel(n_jobs=cpus)(delayed(process_taps)\
+                                           (i,
+                                            isize_stats,
+                                            bamfile,
+                                            contigs,
+                                            uniq) for i in inputs)
 
+
+    #%% write vcf output
+
+    # Exact position from splitreads: strumenti line 956ff
 
     for candidate in out:
 
@@ -254,16 +253,15 @@ def run_module(
         or a part of it is missing
         """
 
-        is_tap = False
-
         if candidate.nr_deviant > 0:
 
             chromosome = annot[candidate.indx].chromosome
             element_start = annot[candidate.indx].start
             element_end = annot[candidate.indx].end
 
-            # easiest case: the whole element is absent
+            # Ignoring partial deletions
             if candidate.isize > candidate.length:
+
 
                 """ Check if there are reads spanning the breakpoints
                 """
@@ -281,37 +279,40 @@ def run_module(
 
                 if start_overlap + end_overlap == 0 and \
                    (candidate.length - 5*isize_stdev) < candidate.isize < (candidate.length + 5*isize_stdev):
-                    """ Way too restrictive in previous version (2*isize_stdev)"""
-
-                    outline = candidate.write(annot)
-                    outfile.write('\t'.join(outline) + '\n')
-                    is_tap = True
 
 
-        if not is_tap and reconstruct:
+                    me_info = '%s,%i,%i,%s' % (
+                        annot[candidate.indx].id,
+                        element_start,
+                        element_end,
+                        annot[candidate.indx].strand
+                        )
 
-            annot_row = annot[candidate.indx]
-            region = [annot_row.chromosome, annot_row.start, annot_row.end]
-            seq, known = candidate.reconstruct(region, bamfile, filters)
+                    INFO = 'SVTYPE=DEL;MEINFO=%s;END=%i;SVLEN=%i;DPADJ=%i' % \
+                        (me_info, candidate.end, candidate.end-candidate.start, candidate.cov_mean)
 
-            # How many reads bridge the start and end of the TE?
-            five_bridge = strumenti.overlapping_reads(annot_row.chromosome,
-                                                      annot_row.start,
-                                                      bamfile, 20)
+                    REF = contigs[chromosome][candidate.start - 2] # because candidate.start is 1-based
 
-            three_bridge = strumenti.overlapping_reads(annot_row.chromosome,
-                                                      annot_row.end,
-                                                      bamfile, 20)
+                    FORMAT = '%s:%i:%i' % ('1/1', GQ, candidate.nr_deviant)
 
-            infofield = 'covered:%s,five_nbridge:%s,three_nbridge:%s' % (known, five_bridge, three_bridge)
+                    vcf_line = [
+                        chromosome,
+                        candidate.start - 1,
+                        '.',
+                        REF,
+                        'DEL:ME',
+                        GQ,
+                        'PASS',
+                        INFO,
+                        'GT:GQ:DP:'
+                        FORMAT
+                        ]
 
-            seqrec = SeqRecord(Seq(seq),
-                            id = '_'.join(map(str,region)),
-                            name = annot_row.id,
-                            description = infofield)
-            recs.append(seqrec)
 
-    if reconstruct:
-        SeqIO.write(recs, 'omnipresent.fasta', 'fasta')
 
-    outfile.close()
+
+
+
+
+
+

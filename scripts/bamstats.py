@@ -33,6 +33,95 @@ def get_args():
     return args
 
 
+def local_cov(region, bamfile):
+    """ Estimates mean coverage and standard deviation in the
+    region chromosome:start-end. Attencion: indexing in pybam is 0-based """
+
+    chromosome, start, end = region
+    pybam = pysam.AlignmentFile(bamfile, "rb")
+    depth = dict()
+
+    for pileupcolumn in pybam.pileup(chromosome, start, end, **{"truncate":True}):
+
+        d = pileupcolumn.nsegments
+        pos = pileupcolumn.reference_pos
+        depth[pos] = d
+
+    pybam.close()
+
+    coverage = []
+    for i in range(start, end):
+        try:
+            c = depth[i]
+        except KeyError:
+            c = 0
+        coverage.append(c)
+
+    if len(coverage) > 1:
+        mean = int(statistics.mean(coverage))
+        stdev = int(statistics.stdev(coverage))
+    else:
+        mean = int(coverage[0])
+        stdev = 'NA'
+
+    return mean, stdev
+
+
+def local_cov_filt(region, bamfile, filters):
+
+    """ Estimate mean coverage and standard deviation in the region of
+    interest. Filters for base and mapping quality are applied
+    """
+    chromosome, start, end = region
+    baseq, mapq = filters
+
+    pybam = pysam.AlignmentFile(bamfile, "rb")
+    cov_dict = {}
+
+    crap_reads = set()
+
+    for pileupcolumn in pybam.pileup(chromosome, start, end,
+                                     **{"truncate": True}):
+        pos = pileupcolumn.pos
+        cov_dict[pos] = 0
+
+        for pileupread in pileupcolumn.pileups:
+
+            read = pileupread.alignment
+
+            read_id = read.query_name
+            if read_id in crap_reads:
+                continue
+
+            if pileupread.is_del or pileupread.is_refskip or\
+                not read.is_proper_pair or read.mapping_quality < mapq:
+
+                crap_reads.add(read_id)
+                continue
+
+            if read.query_qualities[pileupread.query_position] < baseq:
+                continue
+
+            cov_dict[pos] += 1
+
+    coverage = []
+    for i in range(start, end):
+        try:
+            c = cov_dict[i]
+        except KeyError:
+            c = 0
+        coverage.append(c)
+
+    if len(coverage) > 1:
+        mean = int(statistics.mean(coverage))
+        stdev = int(statistics.stdev(coverage))
+    else:
+        mean = int(coverage[0])
+        stdev = 'NA'
+
+    return mean, stdev
+
+
 def core_dist_stats(dist):
     """
     Get the core of a distributions and calculate its moments. The core
@@ -94,12 +183,11 @@ def isize_stats(bamfile):
     first_chromosome = pybam.get_reference_name(0)
 
     isizes = list()
-    readlength = int()
+    readlengths = set()
 
     for read in pybam.fetch(reference=first_chromosome):
 
-        while not readlength:
-            readlength = read.infer_query_length()
+        readlengths.add(read.infer_query_length())
 
         if read.is_proper_pair:
             isizes.append(abs(read.isize))
@@ -111,7 +199,7 @@ def isize_stats(bamfile):
     else:
         stats = core_dist_stats(random.sample(isizes, int(1e6)))
 
-    return stats, readlength
+    return stats, max([x for x in readlengths if x])
 
 
 def write_output(bamfile):

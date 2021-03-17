@@ -22,9 +22,9 @@ def get_split_and_discordant_reads(
     """ Extract discordant read pairs in which at least one read maps uniquely
     to the reference, i.e. AS - XS > uniqueness_threshold. Write uniquely
     mapping reads to anchors dicitonary, their mate to fasta file.
-    
+
     To do: make compatible with minimap2
-    
+
 
     """
     pybam = pysam.AlignmentFile(bamfile, "rb")
@@ -86,7 +86,7 @@ def get_split_and_discordant_reads(
 
             if chrmsm not in split_positions:
                 split_positions[chrmsm] = []
-            
+
             split_positions[chrmsm].append([name, interval[0], interval[1]])
 
         """ Discordant read pairs
@@ -140,7 +140,7 @@ def get_split_and_discordant_reads(
 
 
 def is_softclipped(read, min_clip_length):
-    """ 
+    """
     Return FALSE if read is not clipped.
     Only reads are used where exactly one end is clipped off and not both;
     and where the clipped part => min_clip_length
@@ -163,7 +163,7 @@ def is_softclipped(read, min_clip_length):
 
 def get_anchor_positions(hits, anchors, bamfile, isize):
 
-    """ 
+    """
     Go through the blast hits and get the corresponding anchor positions
     """
 
@@ -231,56 +231,64 @@ def run_module(
 
     uniq, aln_len_DR, aln_len_SR, min_perc_id, word_size = thresholds
 
-
+    # Traverse bam and extract disordant read pairs and split reads
     print('Getting candidate split reads and discordant read pairs from bam file ...')
-    reads = get_split_and_discordant_reads(bamfile,
-                                           aln_len_SR,
-                                           readlength,
-                                           uniq)
-
-    discordant_anchors, splitreads, split_positions = reads
+    discordant_anchors, splitreads, split_positions = get_split_and_discordant_reads(
+        bamfile,
+        aln_len_SR,
+        readlength,
+        uniq)
 
     print('Analysis begins with %i discordant read pairs and %i splitreads' % \
           (len(discordant_anchors), len(splitreads)))
-        
-        
+
+
     # DISCORDANT READS
     print('Aligning discordant reads to target sequences\n...')
     strumenti.create_blastdb(targets)
-    blast_out = strumenti.blastn('discordant.fasta',
-                                 min_perc_id,
-                                 11,
-                                 cpus)
+    blast_out = strumenti.blastn(
+        'discordant.fasta',
+        min_perc_id,
+        11,
+        cpus)
 
-    discordant_hits = strumenti.hit_dictionary(blast_out, aln_len_DR, 'one_hit_only')
+    discordant_hits = strumenti.hit_dictionary(blast_out, aln_len_DR)
     print(' '.join([str(len(discordant_hits.keys())), 'anchor mates map to a TE.']))
 
 
     print('Clustering discordant reads\n...')
-    anchor_positions = get_anchor_positions(discordant_hits, discordant_anchors,
-                                            bamfile, isize_mean)
+    anchor_positions = get_anchor_positions(
+        discordant_hits,
+        discordant_anchors,
+        bamfile,
+        isize_mean)
 
-    discordant_clusters = strumenti.cluster_reads(anchor_positions, 0.05, 'discordant')
-
-    discordant_clusters = strumenti.prefilter_clusters(discordant_clusters, 4)
+    # Only keep clusters with more than 4 items
+    discordant_clusters = strumenti.cluster_reads(
+        anchor_positions,
+        0.05,
+        'discordant',
+        min_cl_size=4
+        )
 
     for k in sorted(discordant_clusters.keys()):
         print(k + ': ' + str(len(discordant_clusters[k])) + ' clusters')
 
-
     # summarize discordant clusters
-    summaries = strumenti.combine_hits_and_anchors(
+    cluster_summaries, discordant_cluster_positions = strumenti.combine_hits_and_anchors(
             discordant_clusters,
             discordant_anchors,
             discordant_hits)
 
-    cluster_summaries, discordant_cluster_positions = summaries
-
 
     # SPLITREADS
     print('Clustering split reads\n...')
-    split_clusters = strumenti.cluster_reads(split_positions, 0.05, 'splitreads')
-    split_clusters = strumenti.prefilter_clusters(split_clusters, 4)
+    split_clusters = strumenti.cluster_reads(
+        split_positions,
+        0.05,
+        'splitreads',
+        min_cl_size=4
+        )
 
     for k in sorted(split_clusters.keys()):
         print(k + ': ' + str(len(split_clusters[k])) + ' clusters')
@@ -291,7 +299,7 @@ def run_module(
 
     blast_out_split = strumenti.blastn(fasta, min_perc_id, word_size, cpus)
 
-    split_hits = strumenti.hit_dictionary(blast_out_split, aln_len_SR, 'one_hit_only')
+    split_hits = strumenti.hit_dictionary(blast_out_split, aln_len_SR)
     print(' '.join([str(len(split_hits.keys())), 'soft-clipped reads map to a TE.']))
 
 
@@ -302,5 +310,10 @@ def run_module(
         splitreads,
         split_hits,
         discordant_cluster_positions)
+
+    # For each cluster/TIP candidate, find reads which span the insertion breakpoint and thus
+    # provide evidence for the reference state (e.g. heterozygosity)
+
+
 
     return combined

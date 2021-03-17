@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-""" dettetore -a program to detect and characterize transposable element polymorphisms
+""" dettetore - a program to detect and characterize transposable element polymorphisms
 
 Toolbox for TE polymorphism detection
 
@@ -9,116 +9,696 @@ License: GNU General Public License v3. See LICENSE.txt for details.
 """
 
 import os
-import scipy
 import statistics
 import subprocess
 import pysam
+import sys
+from scripts import bamstats
 
 from Bio import SeqIO
-from Bio.Seq import Seq
-from Bio.SeqRecord import SeqRecord
 from math import fabs
 from random import random
 from collections import Counter
+from joblib import Parallel, delayed
 
+from scipy import percentile
+from scipy.stats import norm
 
-class hit:
-    """ Container for the blastn output,
-    including the query sequence aligned to the TE
+#%% CLASSI
+
+class mise_en_place:
+
+    """ Object for easy access to program settings
+
     """
 
-    def __init__(self, fields):
-        self.read = fields[0]
-        self.aln_len = float(fields[1])
-        self.score = float(fields[2])
-        self.target_strand = fields[3]
-        self.target_id = fields[4]
-        self.target_aln_start = int(fields[5])
-        self.target_aln_end = int(fields[6])
-        self.seq = fields[7]
+    def __init__(self, args):
+
+        # Files
+        self.bamfile = os.path.abspath(args.bamfile)
+        self.targets = os.path.abspath(args.targets)
+        self.reference = os.path.abspath(args.reference)
+        self.annotation_file = os.path.abspath(args.annot)
+
+        # Thresholds
+        self.uniq = args.uniq
+        self.aln_len_DR = args.aln_len_DR
+        self.aln_len_SR = args.aln_len_SR
+        self.perc_id = args.perc_id
+        self.word_size = args.word_size
+
+        # Program settings
+        self.modus = args.modus
+        self.cpus = args.cpus
+
+        # Parsed files
+        self.annotation = []
+        self.ref_contigs = {seq_record.id:
+                            seq_record.seq for seq_record in SeqIO.parse(self.reference, "fasta")}
 
 
-class cluster_summary:
+        # Load reference TE annotation
+        if 'taps' in self.modus:
 
-    """ In this container the clustered anchor reads
-    and the mates aligning to TEs are combined.
+            # Check file format
+            formt = self.annotation_file.split('.')[-1]
+
+            # Read in annotation
+            with open(self.annotation_file) as f:
+                for line in f:
+                    if line.startswith('#'):
+                        continue
+
+                    fields = line.strip().split()
+
+                    if formt.startswith('bed'):
+
+                        entry = {
+                            'chromosome' : fields[0],
+                            'start' : int(fields[1]),
+                            'end' :  int(fields[2]),
+                            'id' : fields[3],
+                            'strand' : fields[5]
+                            }
+
+                    elif formt.startswith('gff'):
+
+                        entry = {
+                            # GFF uses 1-based indexing!
+                            'chromosome' : fields[0],
+                            'start' : int(fields[3]),
+                            'end' : int(fields[4]),
+                            'id' : fields[-1].split(';')[0].split('=')[-1],
+                            'strand' : fields[6]
+                            }
+
+                    else:
+                        sys.exit('Check annotation format.')
+
+                    self.annotation.append(entry)
+
+        # Load or estimate read statistics
+        readinfo = [f for f in os.listdir('.') if f.endswith('_bamstats.txt')]
+
+        if readinfo:
+            readinfo = readinfo[0]
+            print('Using ' + readinfo)
+
+        else:
+            print('Estimating bam read statistics\n...')
+            readinfo = bamstats.write_output(self.bamfile)
+
+        with open(readinfo) as f:
+            lines = f.readlines()
+            self.readlength = int(lines[0].split()[1].strip())
+            self.cov_mean = int(lines[1].split()[1].strip())
+            self.cov_stdev = int(lines[2].split()[1].strip())
+            self.isize_mean = int(lines[3].split()[1].strip())
+            self.isize_stdev = int(lines[4].split()[1].strip())
+
+
+class TIPs:
+
+    """
+    Detect TE insertions absent in the reference and present in the
+    resequenced accession using discordant read pairs and split reads
     """
 
     def __init__(self):
 
-        self.discordant = self.attributes()
-        self.splitreads = self.attributes()
-        self.score = int()
-        self.strand = {'plus': 0, 'minus': 0}
-        self.aligned_positions = set()
+        self.discordant_clusters = {}
+        self.split_clusters = {}
+
+    def discordant_read_pairs(self, parameters, discordant_anchors):
+        """
+        Blast anchor mates against TE sequences and find clusters of anchor reads
+        """
+
+        print('Aligning discordant reads to target sequences...')
+        create_blastdb(parameters.targets)
+
+        blast_out = blastn(
+            'discordant.fasta',
+            parameters.perc_id,
+            11,
+            parameters.cpus)
+
+        discordant_hits = hit_dictionary(
+            blast_out,
+            parameters.aln_len_DR)
+
+        print(' '.join([str(len(discordant_hits.keys())), 'anchor mates map to a TE.\n']))
+
+
+        print('Clustering discordant reads...')
+        # Only keep anchors with mate mapping to TE
+        anchor_positions = get_anchor_positions(
+            discordant_hits,
+            discordant_anchors,
+            parameters.bamfile,
+            parameters.isize_mean)
+
+        # Only keep clusters with more than 4 items
+        discordant_clusters = cluster_reads(
+            anchor_positions,
+            'discordant',
+            overlap_proportion=0.05,
+            min_cl_size=4
+            )
+
+        # Summarize clusters
+        self.discordant_clusters = summarize_clusters(
+            discordant_clusters,
+            discordant_anchors,
+            discordant_hits,
+            'discordant')
+
+
+    def splitreads(self, parameters, splitreads, split_positions):
+        """
+        Find clusters of splitreads and blast clipped parts of
+        clustering reads against TE database. This is the opposite order than for
+        clustering discordant read pairs, as in this way the time for the blast search
+        can be greatly reduced.
+        """
+
+        print('\nClustering split reads...')
+        split_clusters = cluster_reads(
+            split_positions,
+            'splitreads',
+            overlap_proportion=0.05,
+            min_cl_size=4
+            )
+
+        print('\nAligning split parts to target sequences...')
+        fasta = write_clipped_to_fasta(
+            split_clusters,
+            splitreads,
+            parameters.aln_len_SR)
+
+        blast_out_split = blastn(
+            fasta,
+            parameters.perc_id,
+            parameters.word_size,
+            parameters.cpus)
+
+        split_hits = hit_dictionary(
+            blast_out_split,
+            parameters.aln_len_SR)
+
+        print(' '.join([str(len(split_hits.keys())), 'soft-clipped reads map to a TE.']))
+
+        self.split_clusters = summarize_clusters(
+            split_clusters,
+            splitreads,
+            split_hits,
+            'splitreads',
+            weight=2)
+
+
+    def combine(self):
+        """
+
+        """
+
+        # COMBINE DISCORDANT READS AND SPLITREADS
+        cl_summaries_split = {}
+
+        for chromosome in self.split_clusters:
+
+            x = 0 # variable to store the position in the loop below, to avoid going through the whole thing every time
+
+            for reads in self.split_clusters[chromosome]:
+
+
+                bp = max(c.breakpoint[0])
+
+                overlap = False
+
+                if chromosome in self.discordant_clusters:
+
+                    """ Go through discordant read summaries and check
+                    if there is positional overlap.
+                    """
+
+                    for i in range(x, len(self.discordant_clusters[chromosome])):
+
+                        if bp in range(
+                                self.discordant_clusters[chromosome][i][1].region_start,
+                                self.discordant_clusters[chromosome][i][1].region_end
+                                ):
+
+                            self.discordant_clusters[chromosome][i][2] = c
+                            self.discordant_clusters[chromosome][i][0] = bp
+
+                            x = i
+                            overlap = True
+
+                    if not overlap:
+
+                        if not chromosome in cl_summaries_split:
+                            cl_summaries_split[chromosome] = []
+
+                        cl_summaries_split[chromosome].append([bp, 'NA', c])
+
+                else:
+                    cl_summaries_split[chromosome] = [[bp, 'NA', c]]
+
+        # Merge summaries
+        for chromosome in cl_summaries:
+            if chromosome in cl_summaries_split:
+                cl_summaries[chromosome] += cl_summaries_split[chromosome]
+            cl_summaries[chromosome] = sorted(cl_summaries[chromosome], key=lambda x: int(x[0]))
+
+        for chromosome in cl_summaries_split:
+            if chromosome not in cl_summaries:
+                cl_summaries[chromosome] = cl_summaries_split[chromosome]
+
+        self.clusters = cl_summaries
+
+
+
+class TAPs:
+
+    def __init__(self, parameters):
+
+        isize_stats = (parameters.isize_mean,
+                       parameters.isize_stdev,
+                       parameters.readlength)
+
+        print('\nExtracting read pairs with deviant insert sizes around annotated features\n...')
+        inputs = [(i, x) for i, x  in enumerate(parameters.annotation)]
+
+        self.candidates = Parallel(n_jobs=parameters.cpus)(delayed(self.process_taps)\
+                                               (i,
+                                                isize_stats,
+                                                parameters.bamfile,
+                                                parameters.ref_contigs,
+                                                parameters.uniq) for i in inputs)
+
+
+    def extract_deviant_reads(self, region, isize_stats, bamfile, mapq):
+
+        pybam = pysam.AlignmentFile(bamfile, "rb")
+
+        isize_mean, isize_stdev, readlength = isize_stats
+        q_upper = int(norm.ppf(0.99, isize_mean,isize_stdev))
+
+        chromosome, start, end = region
+
+        deviant_read_pairs = {}
+
+        for read in pybam.fetch(chromosome, start, end):
+
+            name = read.query_name
+
+            # bad read pair
+            if read.mapping_quality < mapq or not read.is_paired:
+                continue
+
+            # discard non-properly oriented reads
+            if (read.mate_is_reverse and read.is_reverse) or \
+                (not read.is_reverse and not read.mate_is_reverse):
+                continue
+
+            # insert size not deviant
+            isize = abs(read.template_length) - (2*readlength)
+            if not (isize > q_upper and isize < 30000):
+                continue
+
+
+            """ Get neat deviant reads with 5' on forward and 3' on reverse
+            """
+
+            if not read.is_reverse and read.mate_is_reverse:
+                deviant_read_pairs[name] = [isize, read]
+
+            elif name in deviant_read_pairs and read.is_reverse and not read.mate_is_reverse:
+                deviant_read_pairs[name].append(read)
+
+        pybam.close()
+
+        remove = []
+
+        for name in deviant_read_pairs:
+            if len(deviant_read_pairs[name]) != 3:
+                remove.append(name)
+
+        for name in remove:
+            deviant_read_pairs.pop(name)
+
+        return deviant_read_pairs
+
+
+    class TAP_candidate:
+
+        def __init__(self, fields):
+
+            self.annotated_TE = {
+                'indx' : fields[0],
+                'length'  : fields[1]
+                }
+
+            self.context = {
+                'region_start' : fields[2],
+                'region_end' : fields[3],
+                'mean_coverage' : fields[4]
+                }
+
+            self.deviant_reads = {
+                'nr_deviant' : int(),
+                'deviation' : int(),
+                'start' : int(),
+                'end' : int(),
+                'mapq_f' : [],
+                'mapq_r' : []
+                }
+
+        def add_deviant_info(self, deviant_summary):
+
+            self.nr_deviant = len(deviant_summary)
+            self.isize = statistics.median(
+                [deviant_summary[k][0] for k in deviant_summary]
+                )
+
+            try:
+                self.start = max(
+                    [deviant_summary[k][1].reference_end for k in deviant_summary]
+                    )
+
+                self.end = min(
+                    [deviant_summary[k][2].reference_start for k in deviant_summary]
+                    )
+
+            except ValueError:
+                pass
+
+        #def add_reference_support(self):
+
+
+    def process_taps(
+            self,
+            annot_entry,
+            isize_stats,
+            bamfile,
+            contigs,
+            uniq):
+
+        """ Check if there are deviant read-pairs around the annotated feature
+        """
+
+        i, feature = annot_entry
+        isize_mean, isize_stdev, readlength = isize_stats
+
+        region_start = feature['start'] - (isize_mean + isize_stdev)
+        region_end = feature['end'] + (isize_mean + isize_stdev)
+
+        # Reset coordinates if they are 'outside' chromosomes
+        if region_start < 0:
+            region_start = 0
+
+        if region_end > len(contigs[feature['chromosome']]):
+            region_end = len(contigs[feature['chromosome']]) - 1
+
+        region = (feature['chromosome'], region_start, region_end)
+
+        feature_length = feature['end'] - feature['start']
+
+
+        deviant = self.extract_deviant_reads(region, isize_stats, bamfile, uniq)
+
+        if not deviant:
+            return None
+
+        cov_mean, cov_stdev = bamstats.local_cov(region, bamfile)
+
+        summary = self.TAP_candidate(
+            [
+                i,
+                feature_length,
+                region_start,
+                region_end,
+                cov_mean
+                ]
+            )
+
+        summary.add_deviant_info(deviant)
+
+        return summary
+
+
+class read_cluster:
+
+    def __init__(self, reads):
+
+        # Set with names of clustering reads
+        self.reads = reads
+
+        self.te_hits = {}
+        self.breakpoint = [ [] , [] ]
         self.region_start = float('inf')
         self.region_end = -float('inf')
 
-    class attributes:
+        # Mapping quality of reads bridging the supposed TE insertion site,
+        # thus providing evidence against an insertion. Used to calculate genotype quality
+        self.ref_support = []
 
-        def __init__(self):
+^
+    def combine_hits_and_anchors(self, anchors, hits, modus, weight=1):
 
-            self.start = []
-            self.end = []
-            self.anchors = []
+        for readname in self.reads:
 
-    def update(self, hit, anchor, readname, modus, weight):
+            if readname not in hits:
+                continue
 
-        self.score += (weight * hit.score)
-        self.strand[hit.target_strand] += 1
+            read = anchors[readname]
+            cigar = read.cigartuples
 
-        aln_start = hit.target_aln_start
-        aln_end = hit.target_aln_end
+            # 5' or 3' site?
+            if modus == 'discordant':
+                s = 1 if read.is_reverse else 0
 
-        if aln_start < aln_end:
-            self.aligned_positions.update(range(aln_start, aln_end))
-        else:
-            self.aligned_positions.update(range(aln_end, aln_start))
+            elif modus == 'splitreads':
+                s = 1 if cigar[0][0] == 4 else 0
 
+            # region for local coverage
+            if read.reference_start < self.region_start:
+                self.region_start = read.reference_start
+            if read.reference_end > self.region_end:
+                self.region_end = read.reference_end
 
-        if anchor.reference_start < self.region_start:
-            self.region_start = anchor.reference_start
-        if anchor.reference_end > self.region_end:
-            self.region_end = anchor.reference_end
+            # Insertion breakpoint
+            break_pos = read.reference_end if s == 0 else read.reference_start
+            self.breakpoint[s].append(break_pos)
 
-        if modus == 'discordant':
-            self.discordant.start.append(anchor.reference_start)
-            self.discordant.end.append(anchor.reference_end)
-            self.discordant.anchors.append(readname)
+            # TE hits dictionary
+            for hit in hits[readname]:
 
-        elif modus == 'splitreads':
-            self.splitreads.start.append(anchor.reference_start)
-            self.splitreads.end.append(anchor.reference_end)
-            self.splitreads.anchors.append(readname)
+                targetname = hit['target_id']
 
+                if targetname not in self.te_hits:
 
-class rawvariant:
+                    self.te_hits[targetname] = {
+                        'score' : [0,0],
+                        'strand' : [0,0],
+                        'aligned_positions' : set(),
+                        'anchor_mapqs' : []
+                        }
 
-    def __init__(self, line, accession):
+                self.te_hits[targetname]['score'][s] += (weight * hit['score'])
+                self.te_hits[targetname]['strand'][s] += 1
+                self.te_hits[targetname]['anchor_mapqs'].append(read.mapping_quality)
 
-        fields = line.strip().split('\t')
+                # Nr aligned positions on the target
+                aln_start = hit['target_aln_start']
+                aln_end = hit['target_aln_end']
 
-        self.source = accession
-
-        self.chr = fields[0]
-        self.pos = int(fields[1])
-        self.TE = fields[2]
-        self.strand = fields[3].split('/')
-
-        self.support = map(int, fields[4].split('/'))
-        self.discordant = map(int, fields[5].split('/'))
-        self.split = map(int, fields[6].split('/'))
-        self.aligned = int(fields[7])
-        self.tsd = fields[8]
-        self.nbridge = int(fields[9])
-
-        self.region_start = int(fields[10])
-        self.region_end = int(fields[12])
-        self.coverage = int(fields[12])
-        self.coverage_stdev = int(fields[13])
+                if aln_start < aln_end:
+                    self.te_hits[targetname]['aligned_positions'].update(range(aln_start, aln_end))
+                else:
+                    self.te_hits[targetname]['aligned_positions'].update(range(aln_end, aln_start))
 
 
-""" FUNZIONI """
+#%%
+
+class VCF:
+
+    import time
+
+    def __init__(self, parameters):
+
+
+        date = time.strftime("%d/%m/%Y")
+
+        metainfo = [
+
+            '##fileFormat=VCFv4.2',
+            '##fileDate=(%s)' % date,
+            '##source==detettore v0.6',
+            '##reference=%s' % reference,
+            '##contig=<ID=%s,length=%i,assembly=%s>',
+
+            '##INFO=<ID=IMPRECISE,Number=0,Type=Flag,Description="Imprecise structural variation">',
+            '##INFO=<ID=END,Number=1,Type=Integer,Description="End position of the variant described in this record">',
+            '##INFO=<ID=NOVEL,Number=0,Type=Flag,Description="Indicates a novel structural variation">',
+            '##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type of structural variant">',
+            '##INFO=<ID=SVLEN,Number=.,Type=Integer,Description="Difference in length between REF and ALT alleles">',
+            '##INFO=<ID=HOMLEN,Number=.,Type=Integer,Description="Length of base pair identical micro-homology at event breakpoints">',
+            '##INFO=<ID=HOMSEQ,Number=.,Type=String,Description="Sequence of base pair identical micro-homology at event breakpoints">',
+            '##INFO=<ID=MEINFO,Number=4,Type=String,Description="Mobile element info of the form NAME,START,END,POLARITY">',
+            '##INFO=<ID=DPADJ,Number=.,Type=Integer,Description="Read Depth of adjacency">',
+
+            '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
+            '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality according to Li 2001">',
+            '##FORMAT=<ID=DP,Number=2,Type=Integer,Description="Supporting reads. For insertions, this is the \
+                sum of discordant read pairs and splitreads, for deletions it is the nr of read pairs \
+                with deviant insert sizes">',
+
+            '##FORMAT=<ID=DR,Number=2,Type=Integer,Description="Discordant reads">',
+            '##FORMAT=<ID=SR,Number=2,Type=Integer,Description="Split reads">',
+            '##FORMAT=<ID=BR,Number=2,Type=Integer,Description="<Number of reads bridgin the insertion breakpoint">',
+            '##FORMAT=<ID=AL,Number=1,Type=Integer,Description="TE alignment length">',
+
+            '##ALT=<ID=INS:ME,Description=description>',
+            '##ALT=<ID=DEL:ME,Description=description>'
+            ]
+
+
+
+
+
+
+
+#%% FUNZIONI
+
+
+def get_split_and_discordant_reads(parameters):
+
+        """
+        Traverse bam and extract disordant read pairs and split reads.
+        Returns 2 dictionaries 'd[read_name] = pybam read object', and a dictionary 'd[chrom]: pos'
+        with the splitread positions.
+
+        A read pair is discordant if one read maps uniquely to the reference,
+        i.e. AS - XS > uniqueness_threshold, while its mate does not map properly.
+
+        Write uniquely mapping reads to anchors dicitonary, their mate to fasta file.
+
+        To do: make compatible with minimap2
+
+        """
+        pybam = pysam.AlignmentFile(parameters.bamfile, "rb")
+
+        discordant_anchors = dict()
+        discordant_mates = dict()
+        fasta = open('discordant.fasta', 'w')
+
+        splitreads = dict()
+        split_positions = dict()
+
+        for read in pybam.fetch():
+
+            clipped = is_softclipped(read, parameters.aln_len_SR)
+
+            if (read.is_proper_pair and not clipped) or read.is_secondary:
+                continue
+
+            name = read.query_name
+
+            """
+            While BWA always outputs the XS tag, Bowtie2 only does it when
+            there is a secondary alignment
+            """
+            AS = read.get_tag('AS')
+            XS = read.get_tag('XS')
+
+
+            """
+            Splitreads. Only reads are considered where exactly one end
+            is clipped off.
+            """
+            if clipped:
+
+                if AS-XS < parameters.uniq:
+                    continue
+
+                clseq = read.query_sequence
+                if clseq.count('N')/float(len(clseq)) > 0.1:
+                    continue
+
+                cigar = read.cigartuples
+
+                chrmsm = pybam.getrname(read.reference_id)
+                strt, end = read.reference_start, read.reference_end
+
+                if read.is_read1:
+                    name = name +'/1'
+                else:
+                    name = name + '/2'
+
+                splitreads[name] = read
+
+                # get positions of the splitreads
+                if cigar[0][0] == 4:
+                    interval = (end - parameters.readlength, end)
+
+                elif cigar[-1][0] == 4:
+                    interval = (strt, strt + parameters.readlength)
+
+                if chrmsm not in split_positions:
+                    split_positions[chrmsm] = []
+
+                split_positions[chrmsm].append([name, interval[0], interval[1]])
+
+            """
+            Discordant read pairs
+            """
+            if not read.is_proper_pair:
+
+                if AS-XS < parameters.uniq:
+                    uniq = 0
+                else:
+                    uniq = 1
+
+                if read.is_read1:
+                    read_nr = 1
+                else:
+                    read_nr = 2
+
+                if name in discordant_mates:
+                    uniq_mate = discordant_mates[name][2]
+                    if uniq + uniq_mate == 1:
+
+                        mate_read = discordant_mates[name][0]
+
+                        if uniq == 1:
+
+                            seq = mate_read.query_sequence
+                            if seq.count('N')/float(len(seq)) > 0.1:
+                                continue
+
+                            discordant_anchors[name] = read
+                            header = '>' + name
+                            fasta.write(header + '\n' + seq + '\n')
+
+                        else:
+                            seq = read.query_sequence
+                            if seq.count('N')/float(len(seq)) > 0.1:
+                                continue
+
+                            discordant_anchors[name] = mate_read
+                            header = '>' + name
+                            fasta.write(header + '\n' + seq + '\n')
+
+                    del discordant_mates[name]
+
+                else:
+                    discordant_mates[name] = [read, read_nr, uniq]
+
+        fasta.close()
+        pybam.close()
+
+        return [discordant_anchors, splitreads, split_positions]
 
 
 def read_stats(bamfile, proportion):
@@ -179,8 +759,8 @@ def read_stats(bamfile, proportion):
 
 def remove_outliers(lista):
     # outliers defined as in R's boxplots
-    q_1 = scipy.percentile(lista, 25)
-    q_3 = scipy.percentile(lista, 75)
+    q_1 = percentile(lista, 25)
+    q_3 = percentile(lista, 75)
 
     boxlength = q_3 - q_1
 
@@ -189,111 +769,6 @@ def remove_outliers(lista):
 
     lista_filt = [x for x in lista if x >= lower and x <= upper]
     return lista_filt
-
-
-def local_cov(region, bamfile):
-    """ Estimates mean coverage and standard deviation in the
-    region chromosome:start-end. Attencion: indexing in pybam is 0-based """
-
-    chromosome, start, end = region
-    pybam = pysam.AlignmentFile(bamfile, "rb")
-    depth = dict()
-
-    for pileupcolumn in pybam.pileup(chromosome, start, end, **{"truncate":True}):
-
-        d = pileupcolumn.nsegments
-        pos = pileupcolumn.reference_pos
-        depth[pos] = d
-
-    pybam.close()
-
-    coverage = []
-    for i in range(start, end):
-        try:
-            c = depth[i]
-        except KeyError:
-            c = 0
-        coverage.append(c)
-
-    if len(coverage) > 1:
-        mean = int(statistics.mean(coverage))
-        stdev = int(statistics.stdev(coverage))
-    else:
-        mean = int(coverage[0])
-        stdev = 'NA'
-
-    return mean, stdev
-
-
-def local_cov_filt(region, bamfile, filters):
-
-    """ Estimate mean coverage and standard deviation in the region of
-    interest. Filters for base and mapping quality are applied
-    """
-    chromosome, start, end = region
-    baseq, mapq = filters
-
-    pybam = pysam.AlignmentFile(bamfile, "rb")
-    cov_dict = {}
-
-    crap_reads = set()
-
-    for pileupcolumn in pybam.pileup(chromosome, start, end,
-                                     **{"truncate": True}):
-        pos = pileupcolumn.pos
-        cov_dict[pos] = 0
-
-        for pileupread in pileupcolumn.pileups:
-
-            read = pileupread.alignment
-
-            read_id = read.query_name
-            if read_id in crap_reads:
-                continue
-
-            if pileupread.is_del or pileupread.is_refskip or\
-                not read.is_proper_pair or read.mapping_quality < mapq:
-
-                crap_reads.add(read_id)
-                continue
-
-            if read.query_qualities[pileupread.query_position] < baseq:
-                continue
-
-            cov_dict[pos] += 1
-
-    coverage = []
-    for i in range(start, end):
-        try:
-            c = cov_dict[i]
-        except KeyError:
-            c = 0
-        coverage.append(c)
-
-    if len(coverage) > 1:
-        mean = int(statistics.mean(coverage))
-        stdev = int(statistics.stdev(coverage))
-    else:
-        mean = int(coverage[0])
-        stdev = 'NA'
-
-    return mean, stdev
-
-
-def parse_gff(gff_file):
-    gff = dict()
-    with open(gff_file) as f:
-        for line in f:
-            if line.startswith('#'):
-                continue
-
-            fields = line.strip().split('\t')
-            chrmsm = fields[0]
-            try:
-                gff[chrmsm].append(fields)
-            except KeyError:
-                gff[chrmsm] = [fields]
-    return gff
 
 
 def is_overlapping(a,b):
@@ -309,7 +784,52 @@ def is_overlapping(a,b):
         return len(intersection) / float(len(union))
 
 
-def cluster_reads(positions, overlap_proportion, modus):
+def is_softclipped(read, min_clip_length):
+    """
+    Return FALSE if read is not clipped.
+    Only reads are used where exactly one end is clipped off and not both;
+    and where the clipped part => min_clip_length
+    """
+
+    cigar = read.cigartuples
+    if cigar:
+        first, last = cigar[0], cigar[-1]
+
+        a = (first[0] == 4 and first[1] >= min_clip_length)
+        b = (last[0] == 4 and last[1] >= min_clip_length)
+
+        if (a and not b) or (b and not a):
+             return True
+        else:
+            return False
+    else:
+        return False
+
+
+def write_clipped_to_fasta(clusters, reads, min_clip_length):
+
+    fasta = 'softclipped.fasta'
+    f = open(fasta, 'w')
+
+    for k in clusters:
+        for cl in clusters[k]:
+
+            for name in cl:
+                header = '>' + name
+                read = reads[name]
+                cigar = read.cigartuples
+                readseq = read.query_sequence
+                seq = clip_seq(readseq, cigar)
+
+                if len(seq) < min_clip_length:
+                    continue
+                outline = header + '\n' + seq + '\n'
+                f.write(outline)
+    f.close()
+    return fasta
+
+
+def cluster_reads(positions, modus, overlap_proportion=0.05, min_cl_size=4):
 
     """
     Takes a dictionary with chromosomes as keys and ordered intervals.
@@ -371,23 +891,19 @@ def cluster_reads(positions, overlap_proportion, modus):
 
             previous = [name, interval]
 
-    return clusters
-
-
-def prefilter_clusters(clusters, n):
-    """ Clusters with less than n reads are filtered out"""
-
+    # Finally, remove clusters with less than min_cl_size items
     clusters_filt = dict()
     for k in clusters:
         for cl in clusters[k]:
 
-            if len(cl) < n:
+            if len(cl) < min_cl_size:
                 continue
             else:
-                try:
-                    clusters_filt[k].append(cl)
-                except KeyError:
+                if k not in clusters_filt:
                     clusters_filt[k] = [cl]
+                else:
+                    clusters_filt[k].append(cl)
+
     return clusters_filt
 
 
@@ -414,7 +930,7 @@ def blastn(query, min_perc_id, word_size, cpus):
            '-outfmt', '6 qseqid length bitscore sstrand sseqid sstart send qseq',
            '-word_size', str(word_size),
            '-perc_identity', str(min_perc_id),
-           '-max_target_seqs', '1',
+           #'-max_target_seqs', '1', # triggers Warning: [blastn] Examining 5 or more matches is recommended
            '-num_threads', str(cpus)]
 
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
@@ -428,7 +944,7 @@ def blastn(query, min_perc_id, word_size, cpus):
     return blast_out
 
 
-def hit_dictionary(blast_out, min_aln_len, modus):
+def hit_dictionary(blast_out, min_aln_len):
 
     """ Dictionary of TE alignments with read IDs as keys. Makes use of the
     'hit' class defined above
@@ -438,6 +954,7 @@ def hit_dictionary(blast_out, min_aln_len, modus):
     TEhits = dict()
 
     for line in blast_out:
+
         fields = line.decode('utf-8').split('\t')
         aln_len = float(fields[1])
 
@@ -446,23 +963,30 @@ def hit_dictionary(blast_out, min_aln_len, modus):
 
         else:
             name = fields[0]
-            TEhit = hit(fields)
+            TEhit = {
+                'read' : fields[0],
+                'aln_len' : float(fields[1]),
+                'score' : float(fields[2]),
+                'target_strand' : fields[3],
+                'target_id' : fields[4],
+                'target_aln_start' : int(fields[5]),
+                'target_aln_end' : int(fields[6]),
+                'seq' : fields[7]
+                }
 
+            # Only use best hit
             if name in TEhits:
-                if modus == 'one_hit_only':
 
-                    previous_score = TEhits[name][0].score
-                    new_score = TEhit.score
+                previous_score = TEhits[name][0]['score']
+                new_score = TEhit['score']
 
-                    if new_score == previous_score:
-                        TEhits[name].append(TEhit)
-                    elif new_score < previous_score:
-                        continue
-                    elif new_score > previous_score:
-                        TEhits[name] = [TEhit]
-
-                elif modus == 'multiple_hits':
+                if new_score == previous_score:
                     TEhits[name].append(TEhit)
+                elif new_score < previous_score:
+                    continue
+                elif new_score > previous_score:
+                    TEhits[name] = [TEhit]
+
             else:
                 TEhits[name] = [TEhit]
 
@@ -484,190 +1008,6 @@ def clip_seq(seq, cigar):
         clipseq = seq[strt:end]
     return clipseq
 
-
-def summarize_cluster(cluster, read_dictionary, hits, modus, weight):
-
-    """
-
-    """
-
-    summary = {}
-
-    for readname in cluster:
-
-        if readname not in hits:
-            continue
-
-        read = read_dictionary[readname]
-        cigar = read.cigartuples
-
-        # Strand
-        if modus == 'discordant':
-            if read.is_reverse:
-                s = 1
-            else:
-                s=0
-
-        elif modus == 'splitreads':
-            if cigar[0][0] == 4:
-                s = 1
-            elif cigar[-1][0] == 4:
-                s = 0
-
-        for hit in hits[readname]:
-
-            targetname = hit.target_id
-
-            if targetname not in summary:
-                summary[targetname] = [cluster_summary(), cluster_summary()]
-
-            summary[targetname][s].update(hit, read, readname, modus, weight)
-
-    targets = list(summary.keys())
-    deletenda = []
-
-    for target in targets:
-        if modus == 'discordant':
-            nr_obs_l = len(summary[target][0].discordant.anchors)
-            nr_obs_r = len(summary[target][1].discordant.anchors)
-
-        elif modus == 'splitreads':
-            nr_obs_l = len(summary[target][0].splitreads.anchors)
-            nr_obs_r = len(summary[target][1].splitreads.anchors)
-
-        if not (nr_obs_l and nr_obs_r):
-            deletenda.append(target)
-
-    for target in deletenda:
-        del summary[target]
-
-    return summary
-
-
-def combine_hits_and_anchors(clusters,
-                             anchors,
-                             hits):
-
-    """ Takes the clustered anchors of the discordant read pairs, checks if
-    their mates map to a TE, and, if yes, creates a summary of the cluster in
-    form of two cluster_summary objects: one for the evidence from the 5' side,
-    one for the evidence from the 3' side.
-
-    """
-
-    summaries = dict()
-    posizioni = dict()
-
-    chromosomi = sorted(clusters.keys())
-
-    for chromosome in chromosomi:
-
-        for cluster in clusters[chromosome]:
-
-            summary = summarize_cluster(cluster, anchors, hits, 'discordant', 1)
-            if not summary:
-                continue
-
-            region_start = min([summary[x][0].region_start for x in summary])
-            region_end = max([summary[x][1].region_end for x in summary])
-
-            try:
-                summaries[chromosome].append(summary)
-                posizioni[chromosome].append((region_start, region_end))
-
-            except KeyError:
-                summaries[chromosome] = [summary]
-                posizioni[chromosome] = [(region_start, region_end)]
-
-    return summaries, posizioni
-
-
-def add_splitread_evidence(
-        cluster_summaries,
-        split_clusters,
-        splitreads,
-        split_hits,
-        discordant_cluster_positions
-        ):
-
-    """ Add split read information to existing discordant read summaries
-    or create new summaries if the split read cluster does not overlap with
-    any discordant-read summary
-    """
-
-    chromosomi = sorted(split_clusters.keys())
-
-    for chromosome in chromosomi:
-        x = 0 # variable to store the position in the loop below, to avoid going through the whole thing every time
-        for cluster in split_clusters[chromosome]:
-
-            summary = summarize_cluster(cluster, splitreads, split_hits, 'splitreads', 2)
-
-            if not summary:
-                continue
-
-            else:
-
-                clipping_positions = []
-                for y in summary:
-                    clipping_positions += summary[y][0].splitreads.end
-                position = max(clipping_positions)
-
-                overlap = False
-
-                if chromosome in discordant_cluster_positions:
-
-                    """ Go through discordant read summaries and check
-                    if there is positional overlap.
-                    """
-                    for i in range(x, len(discordant_cluster_positions[chromosome])):
-
-                        region_start = discordant_cluster_positions[chromosome][i][0]
-                        region_end = discordant_cluster_positions[chromosome][i][1]
-
-                        if position in range(region_start, region_end):
-
-                            cluster_summaries[chromosome][i] = merge_summaries(
-                                    cluster_summaries[chromosome][i],
-                                    summary)
-                            x = i
-                            overlap = True
-
-                    if not overlap:
-                        cluster_summaries[chromosome].append(summary)
-
-                else:
-                    cluster_summaries[chromosome] = [summary]
-
-    return cluster_summaries
-
-
-def merge_summaries(existing, new):
-    """ Merge discordant read and split read summaries
-    """
-
-    for target in new:
-
-        if not target in existing:
-            existing[target] = [cluster_summary(), cluster_summary()]
-
-        # 0 and 1 for the forward and the reverse strand, resp.
-        for i in [0,1]:
-
-            existing[target][i].splitreads.start = new[target][i].splitreads.start
-            existing[target][i].splitreads.end = new[target][i].splitreads.end
-            existing[target][i].splitreads.anchors = new[target][i].splitreads.anchors
-
-            existing[target][i].score += new[target][i].score
-            existing[target][i].aligned_positions.update(new[target][i].aligned_positions)
-
-            if new[target][i].region_start < existing[target][i].region_start:
-                existing[target][i].region_start = new[target][i].region_start
-
-            if new[target][i].region_end > existing[target][i].region_end:
-                existing[target][i].region_end = new[target][i].region_end
-
-    return existing
 
 
 def consensus_from_bam(region, bamfile, filters):
@@ -784,341 +1124,65 @@ def overlapping_reads(chromosome, position, bamfile, overlap):
     return len(bridge_reads)
 
 
+def get_anchor_positions(hits, anchors, bamfile, isize):
 
-# def write_vcf(tips_out, taps_out, reference):
-
-#     """ Write VCF file for single strain/accession.
-#     """
-
-#     import time
-#     date = time.strftime("%d/%m/%Y")
-
-#     metainfo = [
-
-#         '##fileFormat=VCFv4.2',
-#         '##fileDate=(%s)' % date,
-#         '##source==detettore v0.6',
-#         '##reference=%s' % reference,
-#         '##contig=<ID=%s,length=%i,assembly=%s>',
-
-#         '##INFO=<ID=IMPRECISE,Number=0,Type=Flag,Description="Imprecise structural variation">',
-#         '##INFO=<ID=END,Number=1,Type=Integer,Description="End position of the variant described in this record">',
-#         '##INFO=<ID=NOVEL,Number=0,Type=Flag,Description="Indicates a novel structural variation">',
-#         '##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type of structural variant">',
-#         '##INFO=<ID=SVLEN,Number=.,Type=Integer,Description="Difference in length between REF and ALT alleles">',
-#         '##INFO=<ID=HOMLEN,Number=.,Type=Integer,Description="Length of base pair identical micro-homology at event breakpoints">',
-#         '##INFO=<ID=HOMSEQ,Number=.,Type=String,Description="Sequence of base pair identical micro-homology at event breakpoints">',
-#         '##INFO=<ID=MEINFO,Number=4,Type=String,Description="Mobile element info of the form NAME,START,END,POLARITY">',
-#         '##INFO=<ID=DPADJ,Number=.,Type=Integer,Description="Read Depth of adjacency">',
-
-#         '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
-#         '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality according to Li 2001">',
-#         '##FORMAT=<ID=DP,Number=2,Type=Integer,Description="Supporting reads. For insertions, this is the \
-#             sum of discordant read pairs and splitreads, for deletions it is the nr of read pairs \
-#             with deviant insert sizes">',
-#         '##FORMAT=<ID=DR,Number=2,Type=Integer,Description="Discordant reads">',
-#         '##FORMAT=<ID=SR,Number=2,Type=Integer,Description="Split reads">',
-#         '##FORMAT=<ID=BR,Number=2,Type=Integer,Description="<Number of reads bridgin the insertion breakpoint">',
-#         '##FORMAT=<ID=AL,Number=1,Type=Integer,Description="TE alignment length">',
-
-#         '##ALT=<ID=INS:ME,Description=description>',
-#         '##ALT=<ID=DEL:ME,Description=description>'^
-#         ]
-
-#     # TAPs
-#     #if taps_out:
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#     # TIPs
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def tip_output_table(combined, bamfile):
-
-    """ Write final output table.
-
-   To do: replace with single vcf output for TIPs and TAPs!
+    """ Go through the blast hits and get the corresponding anchor positions
     """
 
-    header = [
-        'chromosome',
-        'position',
-        'TE',
-        'strand',
-        'nr_supporting_reads',
-        'nr_discordant_reads',
-        'nr_splitreads',
-        'nr_aligned_positions',
-        'TSD',
-        'nr_bridge_reads',
-        'region_start',
-        'region_end',
-        'region_cov_mean',
-        'region_cov_stdev']
+    pybam = pysam.AlignmentFile(bamfile, "rb")
+    positions = dict()
 
-    tabula = []
+    for read in hits.keys():
 
-    for  chrmsm in combined:
+        anchor = anchors[read]
+        chromosome = pybam.getrname(anchor.reference_id)
+        strt, end = anchor.reference_start, anchor.reference_end
 
-        for site in combined[chrmsm]:
-
-
-            """Get the target with the highest cumulative bit score,
-            both from the 5' of the insertion site and from the 3'
-            """
-            name_l, name_r = get_highest_scoring_target(site)
-
-            d_anchors_l = site[name_l][0].discordant.anchors
-            d_anchors_r = site[name_r][1].discordant.anchors
-            s_anchors_l = site[name_l][0].splitreads.anchors
-            s_anchors_r = site[name_r][1].splitreads.anchors
-
-            A = (d_anchors_l and d_anchors_r)
-            B = (s_anchors_l and s_anchors_r)
-
-            if name_l == name_r:
-                target_name = name_l
-            else:
-                target_name = '%s/%s' % (name_l, name_r)
-
-
-            """ Strand of the insertion
-            """
-            if site[name_l][0].strand['plus'] >= site[name_l][0].strand['minus']:
-                strand_l = '+'
-            else:
-                strand_l = '-'
-
-            if site[name_r][1].strand['plus'] >= site[name_r][1].strand['minus']:
-                strand_r = '+'
-            else:
-                strand_r = '-'
-
-            strand = '%s/%s' % (strand_l, strand_r)
-
-
-            """ Number of supporting reads
-            """
-            discordant_l, discordant_r = len(d_anchors_l), len(d_anchors_r)
-            split_l, split_r = len(s_anchors_l), len(s_anchors_r)
-
-            support = '%i/%i' % (discordant_l + split_l, discordant_r + split_r)
-            nr_discordant = '%i/%i' % (discordant_l, discordant_r)
-            nr_splitreads = '%i/%i' % (split_l, split_r)
-
-
-
-            """ Number of nucleotides that could be aligned to the target
-            """
-            nr_aln_l = site[name_l][0].aligned_positions
-            nr_aln_r = site[name_r][1].aligned_positions
-            nr_aln = len(nr_aln_l | nr_aln_r)
-
-
-            """ Guess insertion site position. If splitreads are present,
-            these are used to derive the position and to extract, if present,
-            the target site duplication (TSD)"""
-            TSD = '-'
-
-            if A:
-                position = max(remove_outliers(site[name_l][0].discordant.end))
-
-            if B:
-                position = max(remove_outliers(site[name_l][0].splitreads.end))
-                position_reverse_sr = min(remove_outliers(site[name_r][1].splitreads.start))
-
-                """ If splitreads overlap, extract the overlapping
-                sequence if it is shorter than 10 bp"""
-                if position_reverse_sr < position:
-                    region = [chrmsm, position_reverse_sr + 1, position]
-                    TSD = consensus_from_bam(region, bamfile, [20, 30])
-                    if len(TSD) > 15:
-                        TSD = '-'
-
-
-            """ Coordinates of the insertion site region and the sequencing
-            coverage in this region (mean and standard deviation"""
-            region_start = min([site[name_l][0].region_start, site[name_r][1].region_start])
-            region_end = max([site[name_l][0].region_end, site[name_r][1].region_end])
-            region = [chrmsm, region_start, region_end]
-            region_coverage = local_cov(region, bamfile)
-
-
-            """ Number of reads spanning the insertion site. If more than n
-            non-split reads span it, the insertion is considered heterozygous"""
-            n_bridge_reads = overlapping_reads(chrmsm, position, bamfile, 20)
-
-
-            anchor_reads = ','.join(d_anchors_l) + ';' +\
-                           ','.join(d_anchors_r) + ';' +\
-                           ','.join(s_anchors_l) + ';' +\
-                           ','.join(s_anchors_r)
+        if anchor.is_reverse:
+            interval = strt-isize+10, strt
+        else:
+            interval = end-10, end + isize
 
-            outline = [
-                chrmsm,
-                position,
-                target_name,
-                strand,
-                support,
-                nr_discordant,
-                nr_splitreads,
-                nr_aln,
-                TSD,
-                n_bridge_reads,
-                region_start,
-                region_end,
-                region_coverage[0],
-                region_coverage[1],
-                anchor_reads
-                ]
+        try:
+            positions[chromosome].append([read, interval[0], interval[1]])
+        except KeyError:
+            positions[chromosome] = [[read, interval[0], interval[1]]]
 
-            outline = map(str, outline)
-            tabula.append(list(outline))
+    for k in positions.keys():
+        positions[k] = sorted(positions[k], key=lambda x: int(x[1]))
 
-    tabula = sorted(tabula, key=lambda x: (x[0], int(x[1])))
-    with open('tips.tsv', 'w') as f, \
-         open('tips.supporting_reads.txt', 'w') as g:
+    pybam.close()
+    return positions
 
-        f.write('\t'.join(header) + '\n')
-        g.write('discordant_left;discordant_right;split_left;split_right\n')
-        for line in tabula:
-            f.write('\t'.join(line[:-1]) + '\n')
-            g.write(line[-1] + '\n')
 
+def summarize_clusters(clusters, anchors, hits, modus, weight=1):
 
+    cl_summaries = {}
 
-def tap_output_table(out, annot, bamfile):
-    """
+    for chromosome in clusters:
 
-    """
-    header = [
-        'chromosome',
-        'feature_start',
-        'feature_end',
-        'feature_id',
-        'feature_strand',
-        'feature_length',
-        'isize',
-        'nr_deviant',
-        'absence_start',
-        'absence_end',
-        'cov_mean',
-        'cov_stdev'
-        ]
+        for reads in clusters[chromosome]:
 
-    recs = []
+            c = read_cluster(reads)
 
-    outfile = open('taps.tsv', 'w')
-    outfile.write('\t'.join(header) + '\n')
+            c.combine_hits_and_anchors(
+                anchors,
+                hits,
+                'discordant',
+                weight)
 
-    for candidate in out:
+            if not c.te_hits or \
+                len(c.breakpoint[0]) < 2 or len(c.breakpoint[1]) < 2:
+                    continue
 
-        if candidate == None:
-             continue
+            bp = max(c.breakpoint[0])
 
-        """ If there are deviant read pairs, check if the whole element
-        or a part of it is missing
-        """
+            if chromosome not in cl_summaries:
+                cl_summaries[chromosome] = []
 
-        is_tap = False
+            cl_summaries[chromosome].append((bp, c))
 
-        if candidate.nr_deviant > 0:
-
-            chromosome = annot[candidate.indx].chromosome
-            element_start = annot[candidate.indx].start
-            element_end = annot[candidate.indx].end
-
-            # easiest case: the whole element is absent
-            if candidate.isize > candidate.length:
-
-
-                """ Check if there are reads spanning the breakpoints
-                """
-                start_overlap = overlapping_reads(chromosome,
-                                                            element_start,
-                                                            bamfile, 20)
-
-                end_overlap = overlapping_reads(chromosome,
-                                                          element_end,
-                                                          bamfile, 20)
-
-                if start_overlap + end_overlap == 0 and \
-                   (candidate.length - 5*isize_stdev) < candidate.isize < (candidate.length + 5*isize_stdev):
-                    """ Way too restrictive in previous version (2*isize_stdev)"""
-
-                    outline = candidate.write(annot)
-                    outfile.write('\t'.join(outline) + '\n')
-                    is_tap = True
-
-
-        if not is_tap and reconstruct:
-
-            annot_row = annot[candidate.indx]
-            region = [annot_row.chromosome, annot_row.start, annot_row.end]
-            seq, known = candidate.reconstruct(region, bamfile, filters)
-
-            # How many reads bridge the start and end of the TE?
-            five_bridge = overlapping_reads(annot_row.chromosome,
-                                                      annot_row.start,
-                                                      bamfile, 20)
-
-            three_bridge = overlapping_reads(annot_row.chromosome,
-                                                      annot_row.end,
-                                                      bamfile, 20)
-
-            infofield = 'covered:%s,five_nbridge:%s,three_nbridge:%s' % (known, five_bridge, three_bridge)
-
-            seqrec = SeqRecord(Seq(seq),
-                            id = '_'.join(map(str,region)),
-                            name = annot_row.id,
-                            description = infofield)
-            recs.append(seqrec)
-
-    if reconstruct:
-        SeqIO.write(recs, 'omnipresent.fasta', 'fasta')
-
-    outfile.close()
-
-
-
-
-
-
-
-
-
-
-
+    return cl_summaries
 
 
 
