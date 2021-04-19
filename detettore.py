@@ -10,13 +10,20 @@ import argparse
 import logging
 import os
 import shutil
+import time
 
 from scripts import strumenti
-
+from scripts import bamstats
 
 def get_args():
 
-    parser = argparse.ArgumentParser(description='Detect TE polymorphisms from paired-end read data')
+    parser = argparse.ArgumentParser(
+        description='Detect TE polymorphisms from paired-end read data')
+
+
+    # Parameter groups (as in ISmapper...)
+
+
 
     # FILES
     parser.add_argument('-b', dest="bamfile",
@@ -87,6 +94,40 @@ def get_args():
     return args
 
 
+#%% TEST args
+
+from Bio import SeqIO
+
+class args:
+
+    def __init__(self):
+
+        self.bamfile = "/home/cristobal/github/detettore/testing/RW-TB008_SRR10828835.bam"
+        self.reference = "/home/cristobal/github/detettore/testing/MTB_ancestor_reference.fasta"
+        self.targets = "/home/cristobal/github/detettore/testing/GCF_000195955.2_ASM19595v2_genomic.fna.is.consensus.fna"
+        self.annot = "/home/cristobal/github/detettore/testing/GCF_000195955.2_ASM19595v2_genomic.mobile_genetic_elements.nameTAG.MTB_anc.gff"
+        self.outfolder = "RW-TB008"
+
+        self.uniq = 20
+        self.aln_len_DR = 50
+        self.aln_len_SR = 30
+        self.perc_id = 80
+        self.word_size = 11
+
+        self.modus = ['tips', 'taps']
+        self.cpus = 4
+        self.bamstats = False
+
+        self.ref_contigs = {seq_record.id:
+                            seq_record.seq for seq_record in SeqIO.parse(self.reference, "fasta")}
+        self.annotation = []
+        self.readinfo = False
+
+args = args()
+
+os.chdir("testing")
+
+
 #%% MAIN
 
 def main():
@@ -112,31 +153,305 @@ def main():
 
         # Get discordant read pairs and splitreads
         print('Getting candidate split reads and discordant read pairs from bam file ...')
-        discordant_anchors, splitreads, split_positions = strumenti.get_split_and_discordant_reads(parameters)
+        DR_anchors, splitreads, split_positions = strumenti.get_split_and_discordant_reads(parameters)
         print('Analysis begins with %i discordant read pairs and %i splitreads.\n' % \
-              (len(discordant_anchors), len(splitreads)))
+              (len(DR_anchors), len(splitreads)))
 
         # Discordant read pairs: find anchor clusters with mates mapping to TEs
-        tips.discordant_read_pairs(parameters, discordant_anchors)
-        for k in sorted(tips.discordant_clusters):
-            print(k + ': ' + str(len(tips.discordant_clusters[k])) + ' clusters')
+        tips.discordant_read_pairs(parameters, DR_anchors)
+        print(str(len(tips.DR_clusters)) + ' clusters')
 
         # Same for splitreads
         tips.splitreads(parameters, splitreads, split_positions)
-        for k in sorted(tips.split_clusters):
-            print(k + ': ' + str(len(tips.split_clusters[k])) + ' clusters')
+        print(str(len(tips.SR_clusters)) + ' clusters')
+
+
+        # Combine split and discordant
+        tips.combineDR_SR(parameters)
+
+
+        #%% WRITE VCF
+
+        date = time.strftime("%d/%m/%Y")
+
+        metainfo = [
+
+            '##fileFormat=VCFv4.2',
+            '##fileDate=(%s)' % date,
+            '##source==detettore v0.6',
+            '##reference=%s' % parameters.reference,
+            '##contig=<ID=%s,length=%i,assembly=%s>',
+
+            '##INFO=<ID=IMPRECISE,Number=0,Type=Flag,Description="Imprecise structural variation">',
+            '##INFO=<ID=END,Number=1,Type=Integer,Description="End position of the variant described in this record">',
+            '##INFO=<ID=NOVEL,Number=0,Type=Flag,Description="Indicates a novel structural variation">',
+            '##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type of structural variant">',
+            '##INFO=<ID=SVLEN,Number=.,Type=Integer,Description="Difference in length between REF and ALT alleles">',
+            '##INFO=<ID=HOMLEN,Number=.,Type=Integer,Description="Length of base pair identical micro-homology at event breakpoints">',
+            '##INFO=<ID=HOMSEQ,Number=.,Type=String,Description="Sequence of base pair identical micro-homology at event breakpoints">',
+            '##INFO=<ID=MEINFO,Number=4,Type=String,Description="Mobile element info of the form NAME,START,END,POLARITY">',
+            '##INFO=<ID=DPADJ,Number=.,Type=Integer,Description="Read Depth of adjacency">',
+
+            '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
+            '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality according to Li 2001">',
+            '##FORMAT=<ID=DP,Number=2,Type=Integer,Description="Supporting reads. For insertions, this is the \
+                sum of discordant read pairs and splitreads, for deletions it is the nr of read pairs \
+                with deviant insert sizes">',
+
+            '##FORMAT=<ID=DR,Number=2,Type=Integer,Description="Discordant reads">',
+            '##FORMAT=<ID=SR,Number=2,Type=Integer,Description="Split reads">',
+            '##FORMAT=<ID=BR,Number=2,Type=Integer,Description="<Number of reads bridgin the insertion breakpoint">',
+            '##FORMAT=<ID=AL,Number=1,Type=Integer,Description="TE alignment length">',
+
+            '##ALT=<ID=INS:ME,Description=description>',
+            '##ALT=<ID=DEL:ME,Description=description>'
+            ]
+
+
+        for site in tips.candidates:
+
+            CHROM = site[0]
+            POS = site[1]
+            ID = '.'
+
+            REF = parameters.ref_contigs[CHROM][POS - 1]
+            ALT = 'INS:ME'
+
+            discordant = site[2]
+            split = site[3]
+
+
+            """ Which transposable element?
+            """
+            # Merge DR and SR information
+            if discordant and split:
+
+               te_hits = strumenti.merge_TE_dict(site[2].te_hits, site[3].te_hits)
+
+            elif discordant:
+                te_hits = site[2].te_hits
+
+            elif split:
+                te_hits = site[3].te_hits
+
+
+            # Get highest scoring TE
+            best = strumenti.get_highest_scoring_TE(te_hits)
+
+            te = best[0]
+            te_start = min(te_hits[te]['aligned_positions'])
+            te_end = max(te_hits[te]['aligned_positions'])
+            te_strand = '+' if te_hits[te]['strand']['+'] > te_hits[te]['strand']['-'] else '-'
+
+            meinfo = '%s,%i,%i,%s' % (te, te_start, te_end, te_strand)
+
+
+            """ Target site duplication:
+            If splitreads overlap, extract the overlapping sequence if it is shorter than 15 bp
+            """
+
+            if split:
+                position_reverse_sr = min(strumenti.remove_outliers(split.breakpoint[1]))
+
+                if position_reverse_sr < POS:
+                    region = [CHROM, position_reverse_sr + 1, POS]
+                    TSD = strumenti.consensus_from_bam(region, parameters.bamfile, [20, 30])
+
+            else:
+                TSD = ''
+
+
+            """ Coordinates of the insertion site region and its mean sequencing coverage
+            """
+            if discordant:
+                region = [CHROM, discordant.region_start, discordant.region_end]
+
+            else:
+                region = [CHROM, split.region_start, split.region_end]
+
+            region_coverage = bamstats.local_cov(region, parameters.bamfile)
+
+
+
+            """ Genotype and genotype quality
+            """
+            gt_discordant = get_genotype(discordant, te, parameters, 'discordant') if discordant else ''
+
+            gt_split = get_genotype(split, te, parameters, 'split') if split else ''
+
+            outline = [CHROM, POS, '.', REF, ALT, meinfo, gt_discordant, gt_split]
+            print(outline)
+
+
+
+
+
+def get_genotype(read_cluster, te, parameters, modus):
+
+    """ Genotype likelihood and quality
+
+    Phred score Q = -10*log10(P) <->  P = 10^(-Q/10)
+
+    Genotype qualities:
+    https://gatk.broadinstitute.org/hc/en-us/articles/360035890451-Calculation-of-PL-and-GQ-by-HaplotypeCaller-and-GenotypeGVCFs
+
+    """
+
+    import numpy as np
+    import math
+
+
+    # Get reads supporting reference allele
+    read_cluster.get_REF_support(parameters, modus)
+
+    # Convert phred score Q to error probability
+
+    # Error probabilities of ...
+
+    # ... reference-supporting reads
+    ref_Q = [read_cluster.ref_support[x] for x in read_cluster.ref_support]
+    ref_errP = [pow(10, (-x/10)) for x in ref_Q]
+
+    # ... TE-supporting reads
+    alt_Q = [read_cluster.te_hits[te]['combined_mapqs'][x] for x in read_cluster.te_hits[te]['combined_mapqs']]
+    alt_errP = [pow(10, (-x/10)) for x in alt_Q]
+
+
+    # Calculate likelihoods
+    gt_lik = []
+    for n_ref_alleles in [0, 1, 2]:
+
+        gt_lik.append(GL(n_ref_alleles, ref_errP, alt_errP, 2))
+
+    gt_phred = [-10 * np.log10(x) for x in gt_lik]
+
+    minQ = min(gt_phred)
+    gt = gt_phred.index(minQ)
+
+    if gt == 0:
+        GT = '1/1'
+    elif gt == 1:
+        GT = '0/1'
+    elif GT == 2:
+        GT = '0/0'
+
+    # Genotype quality: difference between lowest and second lowest Q
+    Q_norm = [x - minQ for x in gt_phred]
+    Q_norm.sort()
+
+    if math.isinf(Q_norm[1]):
+        Q_norm[1] = 999
+
+    GQ = round(Q_norm[1] - Q_norm[0])
+
+    return GT, GQ
+
+
+def GL(g, ref_errP, alt_errP, m):
+
+    """
+    Calculate genotype likelihoods
+
+    Formula 2 in Li 2011, doi:10.1093/bioinformatics/btr509
+
+    m : ploidy
+    k : nr of reads
+    g : nr of ref alleles
+    l : nr of reads supporting ref
+
+    """
+
+    l = len(ref_errP)
+
+    k = l + len(alt_errP)
+
+    L = ( 1 / pow(m, k) ) * \
+        np.prod(
+            [ ( (m - g) * e ) + ( g * (1 - e) ) for e in ref_errP]
+            )  * \
+        np.prod(
+            [( (m -g) * (1 - e) ) + ( g * e ) for e in alt_errP]
+            )
+
+    return L
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            # Imprecise event if there is no splitread information
+            if site[3] == 'NA':
+
+                INFO = 'IMPRECISE;SVTYPE=INS;SVLEN=%i;MEINFO=%s;CIPOS=%i,%i;HOMLEN=%i;HOMSEQ=%s;DPADJ=%i' \
+                    % ()
+
+            else:
+
+                INFO = 'SVTYPE=%s;MEINFO=%s;HOMLEN=%i;HOMSEQ=%s;DPADJ=%i' \
+                    % ()
+
+
+
+
+
+
+            FORMAT = 'GT:GQ'
+
+            # Get genotype with highest likelihood
+            dr_cl.get_ref_support(parameters, 20, 'discordant')
+            sr_cl.get_ref_support(parameters, 20, 'splitreads')
+
+
+            # Genotype quality
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
         # Clean up
         shutil.rmtree('blastdb')
 
-        if not args.keep:
-            for g in [
-                    'discordant.fasta',
-                    'discordant.fasta.blast',
-                     'softclipped.fasta',
-                     'softclipped.fasta.blast'
-                     ]:
+        for g in ['discordant.fasta',
+                  'discordant.fasta.blast',
+                  'softclipped.fasta',
+                  'softclipped.fasta.blast'
+                  ]:
                 os.remove(g)
 
         print('TIP search finished successfully\n')
@@ -144,9 +459,6 @@ def main():
 
     #%% TAPs
     if "taps" in parameters.modus:
-
-
-
 
         print('Searching TE absence polymorphisms')
         taps = strumenti.TAPs(parameters)

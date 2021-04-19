@@ -23,8 +23,8 @@ from math import fabs
 
 def get_args():
 
-    parser = argparse.ArgumentParser(description='Get basic coverage and \
-                                     insert size statistics for a bam file.')
+    parser = argparse.ArgumentParser(
+        description='Get basic coverage and insert size statistics for a bam file.')
 
     parser.add_argument("bamfile",
                         help='bwa mem alignment to reference genome.')
@@ -153,6 +153,8 @@ def coverage_stats(bamfile):
     To do: only use first chromosome, traverse bam only once for coverage and isize stats
     count_coverage function.
 
+    Better: only use 1e6 bp
+
     """
 
     pybam = pysam.AlignmentFile(bamfile, "rb")
@@ -202,27 +204,38 @@ def isize_stats(bamfile):
     return stats, max([x for x in readlengths if x])
 
 
-def write_output(bamfile):
+def write_output(bamfile, outfmt):
 
-    cov_mean, cov_stdev = coverage_stats(bamfile)
+    # cov_mean, cov_stdev = coverage_stats(bamfile)
     isize, readlength = isize_stats(bamfile)
 
     outlist = [
         'readlength\t' + str(readlength),
-        'coverage_mean\t' + str(cov_mean),
-        'coverage_stdev\t' + str(cov_stdev),
+        #'coverage_mean\t' + str(cov_mean),
+        #'coverage_stdev\t' + str(cov_stdev),
         'isize_mean\t' + str(isize[0]),
         'isize_stdev\t' + str(isize[1])
         ]
 
-    basename = bamfile.split('/')[-1].split('.')[0]
-    outfile = basename + '_bamstats.txt'
-    with open(outfile, 'w') as f:
+    if outfmt == 'file':
+        basename = bamfile.split('/')[-1].split('.')[0]
+        outfile = basename + '_bamstats.txt'
+        with open(outfile, 'w') as f:
 
-        for line in outlist:
-            print(line)
-            f.write(line + '\n')
-    return outfile
+            for line in outlist:
+                print(line)
+                f.write(line + '\n')
+        return outfile
+
+    elif outfmt == 'dict':
+
+        return {
+            'readlength' : readlength,
+            #'coverage_mean' : cov_mean,
+            #'coverage_stdev' : cov_stdev,
+            'isize_mean' : isize[0],
+            'isize_stdev' : isize[1]
+            }
 
 
 def main():
