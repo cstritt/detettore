@@ -13,6 +13,10 @@ import statistics
 import subprocess
 import pysam
 import sys
+import numpy as np
+import math
+import time
+
 from scripts import bamstats
 
 from Bio import SeqIO
@@ -70,7 +74,7 @@ class mise_en_place:
                     if line.startswith('#'):
                         continue
 
-                    fields = line.strip().split()
+                    fields = line.strip().split('\t')
 
                     if formt.startswith('bed'):
 
@@ -248,6 +252,153 @@ class TIPs:
 
 
 
+    def output_vcf(self, parameters):
+
+        """ Positions in vcf are 1-based
+        """
+
+        vcf_lines = []
+
+        for site in self.candidates:
+
+            CHROM = site[0]
+            POS = site[1]
+
+            REF = parameters.ref_contigs[CHROM][POS - 1]
+            ALT = '<INS:ME>'
+
+            discordant = site[2]
+            split = site[3]
+
+
+            """ Which transposable element?
+            """
+            # Merge DR and SR information
+            if discordant and split:
+               te_hits = merge_TE_dict(site[2].te_hits, site[3].te_hits)
+
+            elif discordant:
+                te_hits = site[2].te_hits
+
+            elif split:
+                te_hits = site[3].te_hits
+
+
+            # Get highest scoring TE
+            best = get_highest_scoring_TE(te_hits)
+
+            te = best[0]
+            te_start = min(te_hits[te]['aligned_positions'])
+            te_end = max(te_hits[te]['aligned_positions'])
+            te_strand = '+' if te_hits[te]['strand']['+'] > te_hits[te]['strand']['-'] else '-'
+
+            MEINFO = '%s,%i,%i,%s' % (te, te_start, te_end, te_strand)
+
+
+            """ Genotype and genotype quality
+
+            Infer genotype and genotype quality from split reads if present, else
+            from discordant read pairs
+
+            """
+            if split:
+
+                split.get_REF_support(parameters, 'split')
+
+                ref_Q = [split.ref_support[x] for x in split.ref_support]
+                alt_Q = [split.te_hits[te]['combined_mapqs'][x] for x in split.te_hits[te]['combined_mapqs']]
+
+                genotype = get_genotype(ref_Q, alt_Q)
+
+
+            else:
+
+                discordant.get_REF_support(parameters, 'discordant')
+
+                ref_Q = [discordant.ref_support[x] for x in discordant.ref_support]
+                alt_Q = [discordant.te_hits[te]['combined_mapqs'][x] for x in discordant.te_hits[te]['combined_mapqs']]
+
+                genotype = get_genotype(ref_Q, alt_Q)
+
+            # if genotype[0] == '0/0':
+            #     continue
+
+
+            """ Nr of supporting discordant and splitreads
+            """
+            DR = len(discordant.te_hits[te]['hit_mapqs']) if discordant else 0
+            SR = len(split.te_hits[te]['hit_mapqs']) if split else 0
+
+
+            """ Number of TE positions covered
+            """
+            AL = len(te_hits[te]['aligned_positions'])
+
+
+            """ Target site duplication:
+            If splitreads overlap, extract the overlapping sequence if it is shorter than 15 bp
+            """
+
+            if split:
+                position_reverse_sr = min(remove_outliers(split.breakpoint[1]))
+
+                if position_reverse_sr < POS:
+                    region = [CHROM, position_reverse_sr + 1, POS]
+                    HOMSEQ = consensus_from_bam(region, parameters.bamfile, [20, 30])
+                    if len(HOMSEQ) > 20:
+                        HOMSEQ = ''
+
+            else:
+                HOMSEQ = ''
+
+            HOMLEN = len(HOMSEQ)
+
+
+            """ Regional coverage
+            """
+            if discordant:
+                region = [CHROM, discordant.region_start, discordant.region_end]
+
+            else:
+                region = [CHROM, split.region_start, split.region_end]
+
+            region_coverage = bamstats.local_cov(region, parameters.bamfile)
+            DPADJ = region_coverage[0]
+
+            """ Confidence interval for imprecise variants
+            """
+            if not split:
+
+                closest = [
+                    max(remove_outliers(site[2].breakpoint[0])),
+                    min(remove_outliers(site[2].breakpoint[1]))
+                    ]
+
+                CI_lower = min(closest)
+                CI_upper = max(closest)
+
+
+            """ Put together FORMAT and INFO fields
+            """
+
+            # Imprecise event if there is no splitread information
+            if split:
+
+                INFO = 'MEINFO=%s;SVTYPE=INS;HOMSEQ=%s;HOMLEN=%i;DPADJ=%i;DR=%i;SR=%i;AL=%i' \
+                    % (MEINFO, HOMSEQ, HOMLEN, DPADJ, DR, SR, AL)
+            else:
+                INFO = 'MEINFO=%s;SVTYPE=INS;HOMSEQ=%s;HOMLEN=%i;DPADJ=%i;DR=%i;SR=%i;AL=%i;IMPRECISE;CIPOS=%i,%i' \
+                    % (MEINFO, HOMSEQ, HOMLEN, DPADJ, DR, SR, AL, CI_lower, CI_upper)
+
+            FORMAT = 'GT:GQ:DP'
+            GT = '%s:%i:%i' % (genotype[0], genotype[1], DR+SR)
+
+
+            outline = [CHROM, POS, '.', REF, ALT, genotype[1], 'PASS', INFO, FORMAT, GT]
+            vcf_lines.append(outline)
+
+        return vcf_lines
+
 
 class TAPs:
 
@@ -265,10 +416,15 @@ class TAPs:
                                                 isize_stats,
                                                 parameters.bamfile,
                                                 parameters.ref_contigs,
-                                                parameters.uniq) for i in inputs)
+                                                parameters.uniq) for i in inputs
+                                               )
 
 
     def extract_deviant_reads(self, region, isize_stats, bamfile, mapq):
+
+        """
+        Returns a dictionary d[read name] = [isize, AlignedSegment objects]
+        """
 
         pybam = pysam.AlignmentFile(bamfile, "rb")
 
@@ -341,28 +497,36 @@ class TAPs:
                 'deviation' : int(),
                 'start' : int(),
                 'end' : int(),
-                'mapq_f' : [],
-                'mapq_r' : []
+                'mapqs' : {}
                 }
 
         def add_deviant_info(self, deviant_summary):
 
-            self.nr_deviant = len(deviant_summary)
-            self.isize = statistics.median(
+            self.deviant_reads['nr_deviant'] = len(deviant_summary)
+            self.deviant_reads['deviation'] = statistics.median(
                 [deviant_summary[k][0] for k in deviant_summary]
                 )
 
             try:
-                self.start = max(
+                self.deviant_reads['start'] = max(
                     [deviant_summary[k][1].reference_end for k in deviant_summary]
                     )
 
-                self.end = min(
+                self.deviant_reads['end'] = min(
                     [deviant_summary[k][2].reference_start for k in deviant_summary]
                     )
 
             except ValueError:
                 pass
+
+            # Read mapping qualities
+            """ Same format as for TIPs: dictionary[read name] = mapq
+            """
+            for k in deviant_summary:
+
+                mapq_sum = deviant_summary[k][1].mapq + deviant_summary[k][2].mapq
+                self.deviant_reads['mapqs'][k] = mapq_sum
+
 
         #def add_reference_support(self):
 
@@ -416,6 +580,95 @@ class TAPs:
         summary.add_deviant_info(deviant)
 
         return summary
+
+
+    def output_vcf(self, parameters):
+
+
+        vcf_lines = []
+
+        for i, site in enumerate(self.candidates):
+
+            te = parameters.annotation[i]
+
+            CHROM = te['chromosome']
+            POS = te['start']
+
+            REF = parameters.ref_contigs[CHROM][POS - 1]
+            ALT = '<DEL:ME>'
+
+            MEINFO = '%s,%i,%i,%s' % (te['id'], 1, te['end']-te['start'], te['strand'])
+            SVLEN = -(te['end']-te['start'])
+
+
+            if site:
+
+                if site.deviant_reads['deviation'] < site.annotated_TE['length']:
+                    continue
+
+                """ Get reads supporting reference state, ie the presence of the annotated TE
+                """
+
+                region_start = site.context['region_start']
+                region_end = site.context['region_end']
+                DPADJ = site.context['mean_coverage']
+
+                ref_support = {}
+
+                pybam = pysam.AlignmentFile(parameters.bamfile, "rb")
+
+                for read in pybam.fetch(CHROM, region_start, region_end):
+
+                    if read.mapq == 0:
+                        continue
+
+                    # Ignore reads identified as deviant by detettore but as properly paired by the aligner
+                    if read in site.deviant_reads['mapqs']:
+                        continue
+
+                    # Exclude clipped reads
+                    if 'S' in read.cigarstring or 'H' in read.cigarstring:
+                        continue
+
+                    if read.is_proper_pair:
+
+                        if read.query_name in ref_support:
+                            ref_support[read.query_name] += read.mapping_quality
+
+                        else:
+
+                            insert_interval = range(read.reference_end, read.next_reference_start)
+
+                            if \
+                                te['start'] in insert_interval and not te['end'] in insert_interval or \
+                                te['end'] in insert_interval and not te['start'] in insert_interval:
+
+                                ref_support[read.query_name] = read.mapping_quality
+
+                pybam.close()
+
+
+                """ Calculate genotype likelihood and quality
+                """
+                ref_Q = [ref_support[k] for k in ref_support]
+                alt_Q = [site.deviant_reads['mapqs'][k] for k in site.deviant_reads['mapqs']]
+
+
+                genotype = get_genotype(ref_Q, alt_Q)
+
+                # if genotype[0] == '0/0':
+                #     continue
+
+                INFO = 'MEINFO=%s;SVTYPE=DEL;SVLEN=%i;DPADJ=%i' % (MEINFO, SVLEN, DPADJ)
+                FORMAT = 'GT:GQ:DP'
+                GT = '%s:%i:%i' % (genotype[0], genotype[1], site.deviant_reads['nr_deviant'])
+
+
+                outline = [CHROM, POS, '.', REF, ALT, genotype[1], 'PASS', INFO, FORMAT, GT]
+                vcf_lines.append(outline)
+
+        return vcf_lines
+
 
 
 class read_cluster:
@@ -584,62 +837,6 @@ class read_cluster:
                         self.ref_support[read.query_name] = read.mapping_quality
 
         pybam.close()
-
-
-
-#%%
-
-# class VCF:
-
-#     import time
-
-#     def __init__(self, parameters):
-
-
-#         date = time.strftime("%d/%m/%Y")
-
-#         metainfo = [
-
-#             '##fileFormat=VCFv4.2',
-#             '##fileDate=(%s)' % date,
-#             '##source==detettore v0.6',
-#             '##reference=%s' % reference,
-#             '##contig=<ID=%s,length=%i,assembly=%s>',
-
-#             '##INFO=<ID=IMPRECISE,Number=0,Type=Flag,Description="Imprecise structural variation">',
-#             '##INFO=<ID=END,Number=1,Type=Integer,Description="End position of the variant described in this record">',
-#             '##INFO=<ID=NOVEL,Number=0,Type=Flag,Description="Indicates a novel structural variation">',
-#             '##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type of structural variant">',
-#             '##INFO=<ID=SVLEN,Number=.,Type=Integer,Description="Difference in length between REF and ALT alleles">',
-#             '##INFO=<ID=HOMLEN,Number=.,Type=Integer,Description="Length of base pair identical micro-homology at event breakpoints">',
-#             '##INFO=<ID=HOMSEQ,Number=.,Type=String,Description="Sequence of base pair identical micro-homology at event breakpoints">',
-#             '##INFO=<ID=MEINFO,Number=4,Type=String,Description="Mobile element info of the form NAME,START,END,POLARITY">',
-#             '##INFO=<ID=DPADJ,Number=.,Type=Integer,Description="Read Depth of adjacency">',
-
-#             '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
-#             '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality according to Li 2001">',
-#             '##FORMAT=<ID=DP,Number=2,Type=Integer,Description="Supporting reads. For insertions, this is the \
-#                 sum of discordant read pairs and splitreads, for deletions it is the nr of read pairs \
-#                 with deviant insert sizes">',
-
-#             '##FORMAT=<ID=DR,Number=2,Type=Integer,Description="Discordant reads">',
-#             '##FORMAT=<ID=SR,Number=2,Type=Integer,Description="Split reads">',
-#             '##FORMAT=<ID=BR,Number=2,Type=Integer,Description="<Number of reads bridgin the insertion breakpoint">',
-#             '##FORMAT=<ID=AL,Number=1,Type=Integer,Description="TE alignment length">',
-
-#             '##ALT=<ID=INS:ME,Description=description>',
-#             '##ALT=<ID=DEL:ME,Description=description>'
-#             ]
-
-
-
-
-
-
-
-
-
-
 
 
 #%% FUNZIONI
@@ -1303,54 +1500,84 @@ def get_highest_scoring_TE(te_hits):
     return best, score
 
 
+def get_genotype(ref_Q, alt_Q):
 
-def get_REF_support(chromosome, position, region, parameters):
+    """ Genotype likelihood and quality
+
+    INPUT: two dictionaries of the form d[read name] = read quality
+
+    Phred score Q = -10*log10(P) <->  P = 10^(-Q/10)
+
+    Genotype qualities:
+    https://gatk.broadinstitute.org/hc/en-us/articles/360035890451-Calculation-of-PL-and-GQ-by-HaplotypeCaller-and-GenotypeGVCFs
 
     """
-    Obtain reads and read pairs supporting the reference allele.
-    Returns a list of discordant read pairs bridging the insertion breakpoint and their mapq,
-    and a list of single reads spanning the insertion breakpoint, and their mapq.
+
+    # Convert phred score Q to error probability
+
+    # ... reference-supporting reads
+    ref_errP = [pow(10, (-x/10)) for x in ref_Q]
+
+    # ... TE-supporting reads
+    alt_errP = [pow(10, (-x/10)) for x in alt_Q]
+
+
+    # Calculate likelihoods
+    gt_lik = []
+    for n_ref_alleles in [0, 1, 2]:
+
+        gt_lik.append(GL(n_ref_alleles, ref_errP, alt_errP, 2))
+
+    gt_phred = [-10 * np.log10(x) for x in gt_lik]
+
+    minQ = min(gt_phred)
+    gt = gt_phred.index(minQ)
+
+    if gt == 0:
+        GT = '1/1'
+    elif gt == 1:
+        GT = '0/1'
+    elif gt == 2:
+        GT = '0/0'
+
+    # Genotype quality: difference between lowest and second lowest Q
+    Q_norm = [x - minQ for x in gt_phred]
+    Q_norm.sort()
+
+    if math.isinf(Q_norm[1]):
+        Q_norm[1] = 999
+
+    GQ = round(Q_norm[1] - Q_norm[0])
+
+    return GT, GQ
+
+
+def GL(g, ref_errP, alt_errP, m):
 
     """
-    bridge_reads = {}
+    Calculate genotype likelihoods
 
-    pybam = pysam.AlignmentFile(parameters.bamfile, "rb")
+    Formula 2 in Li 2011, doi:10.1093/bioinformatics/btr509
 
-    # Single reads bridging breakpoint
+    m : ploidy
+    k : nr of reads
+    g : nr of ref alleles
+    l : nr of reads supporting ref
 
-    if modus == 'splitreads':
-        for read in pybam.fetch(self.chromosome, self.position, self.position+1):
+    """
 
-            if read.mapq == 0:
-                continue
+    l = len(ref_errP)
 
-            down = [x for x in range(read.reference_start, read.reference_end) if
-                    x < self.position]
-            up = [x for x in range(read.reference_start, read.reference_end) if
-                    x > self.position]
+    k = l + len(alt_errP)
 
-            if len(down) > overlap and len(up) > overlap:
+    L = ( 1 / pow(m, k) ) * \
+        np.prod(
+            [ ( (m - g) * e ) + ( g * (1 - e) ) for e in ref_errP]
+            )  * \
+        np.prod(
+            [( (m -g) * (1 - e) ) + ( g * e ) for e in alt_errP]
+            )
 
-                bridge_reads[read.query_name] = read.mapping_quality
+    return L
 
-    # Properly paired reads spanning break point
-    if modus == 'discordant':
-
-        for read in pybam.fetch(self.chromosome, self.region_start, self.region_end):
-
-            if read.mapq == 0:
-                continue
-
-
-            elif read.query_name in bridge_reads:
-                bridge_reads[read.query_name].append(read.mapping_quality)
-
-            elif read.is_proper_pair:
-                if self.position in range(read.reference_end, read.next_reference_start):
-
-                    bridge_reads[read.query_name] = [read.mapping_quality]
-
-    pybam.close()
-
-    self.ref_support = bridge_reads
 
