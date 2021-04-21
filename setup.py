@@ -3,7 +3,7 @@
 from setuptools import setup, find_packages
 
 setup(name='detettore',
-      version='1.3',
+      version='2.0',
       description='A program to detect and characterize TE polymorphisms',
       author='Christoph Stritt',
       author_email='crstp.strt@gmail.com',
@@ -12,9 +12,7 @@ setup(name='detettore',
 
       packages=find_packages(),
 
-      scripts=['detettore.py',
-               'filter.py',
-               'variantcaller.py'],
+      scripts=['detettore.py'],
 
       python_requires='>=3.7',
 
@@ -24,4 +22,6 @@ setup(name='detettore',
               'biopython',
               'joblib',
               'scipy',
-              'setuptools'])
+              'setuptools'
+              ])
+
