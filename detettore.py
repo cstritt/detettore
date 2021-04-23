@@ -19,9 +19,9 @@ def get_args():
         description='Detect TE polymorphisms from paired-end read data')
 
     # Parameter groups
-    parser_input = parser.add_argument_group('Input files')
-    parser_settings = parser.add_argument_group('Program settings')
-    parser_thresholds = parser.add_argument_group('Alignment and mapping thresholds')
+    parser_input = parser.add_argument_group('INPUT FILES')
+    parser_settings = parser.add_argument_group('PROGRAM SETTINGS')
+    parser_thresholds = parser.add_argument_group('ALIGNMENT AND MAPPING THRESHOLDS')
 
 
     # FILES
@@ -238,7 +238,7 @@ def main():
         '##ALT=<ID=DEL:ME,Description=Transposable element absence polymorphism (TAP)>'
         ]
 
-    with gzip.open(args.outfolder + '.detettore.vcf.gz', 'w') as f:
+    with gzip.open(args.outfolder + '.detettore.vcf.gz', 'wt') as f:
 
         f.write('\n'.join(metainfo))
 

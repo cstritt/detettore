@@ -15,7 +15,6 @@ import pysam
 import sys
 import numpy as np
 import math
-import time
 
 from scripts import bamstats
 

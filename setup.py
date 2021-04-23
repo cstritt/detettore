@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from setuptools import setup, find_packages
+from setuptools import setup
 
 setup(name='detettore',
       version='2.0',
@@ -10,7 +10,7 @@ setup(name='detettore',
       url='https://github.com/cstritt/detettore',
       license='GPL',
 
-      packages=find_packages(),
+      packages=['scripts'],
 
       scripts=['detettore.py'],
 
@@ -22,6 +22,7 @@ setup(name='detettore',
               'biopython',
               'joblib',
               'scipy',
-              'setuptools'
+              'setuptools',
+              'numba'
               ])
 
