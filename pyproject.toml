@@ -8,6 +8,11 @@ license = "GPL-3.0"
 [tool.poetry.dependencies]
 python = "^3.7"
 minimap2 = { git = "https://github.com/lh3/minimap2.git" }
+pysam
+numpy
+biopython
+joblib
+numba
 
 [tool.poetry.dev-dependencies]
 

@@ -2,7 +2,7 @@
 
 """ dettetore - a program to detect and characterize transposable element polymorphisms
 
-Copyright (C) 2018 C. Stritt
+Copyright (C) 2021 C. Stritt
 License: GNU General Public License v3. See LICENSE.txt for details.
 """
 
@@ -16,11 +16,14 @@ from scripts import strumenti
 def get_args():
 
     parser = argparse.ArgumentParser(
+
         description='Detect TE polymorphisms from paired-end read data')
 
     # Parameter groups
     parser_input = parser.add_argument_group('INPUT FILES')
+
     parser_settings = parser.add_argument_group('PROGRAM SETTINGS')
+
     parser_thresholds = parser.add_argument_group('ALIGNMENT AND MAPPING THRESHOLDS')
 
 
@@ -71,7 +74,7 @@ def get_args():
                         help='Include conserved TEs in vcf output.')
 
 
-    # PARAMETERS
+    # THRESHOLDS
     parser_thresholds.add_argument('-u', dest="uniq",
                         type=int, default=30,
                         help='Difference between XS and AS for a read to be considered uniquely mapped. [30]')
@@ -88,9 +91,9 @@ def get_args():
                         type=int, default=80,
                         help='Minimum percentage identity of target hits. [80]')
 
-    parser_thresholds.add_argument('-ws', dest='word_size',
+    parser_thresholds.add_argument('-k', dest='kmer_len',
                         type=int, default=11,
-                        help='Word size (minimum length of best perfect match) for blasting splitreads against TEs. [11]')
+                        help='Minimizer k-mer length used with minimap2. [11]')
 
     parser_thresholds.add_argument('-c', dest='cpus',
                         type= int, default=1,
@@ -103,8 +106,10 @@ def get_args():
 
 #%% TEST args
 
-# from Bio import SeqIO
+from Bio import SeqIO
 
+
+## TB
 # class args:
 
 #     def __init__(self):
@@ -133,6 +138,38 @@ def get_args():
 # args = args()
 
 # os.chdir("testing")
+
+# Bdistachyon
+
+# class args:
+
+#     def __init__(self):
+
+#         self.bamfile = "/home/cristobal/Bdis/data/rawdata/Lb7.rdup.bam"
+#         self.reference = "/home/cristobal/Bdis/data/reference_genome/v3.1/Bdistachyon_314_v3.0.fa"
+#         self.targets = "/home/cristobal/databases/repeats/TREP/TREP_consensus_autonomous_simplifiedNames.fasta"
+#         self.annot = "/home/cristobal/github/detettore/testing/Bdistachyon_RATT_TEannot_v3_07-07-2017.NEW.gff"
+#         self.outfolder = "Lb7"
+
+#         self.uniq = 20
+#         self.aln_len_DR = 50
+#         self.aln_len_SR = 30
+#         self.perc_id = 80
+#         self.kmer_len = 11
+
+#         self.modus = ['tips', 'taps']
+#         self.cpus = 4
+#         self.bamstats = False
+
+#         self.ref_contigs = {seq_record.id:
+#                             seq_record.seq for seq_record in SeqIO.parse(self.reference, "fasta")}
+#         self.annotation = []
+#         self.readinfo = False
+
+# args = args()
+# os.chdir("testing")
+
+
 
 
 #%% MAIN
@@ -179,9 +216,9 @@ def main():
         tips_vcf = tips.output_vcf(parameters)
 
         # Clean up
-
-        for g in ['discordant.fasta',
-                  'softclipped.fasta'
+        for g in [
+                'discordant.fasta',
+                'softclipped.fasta'
                   ]:
                 os.remove(g)
 
@@ -204,8 +241,19 @@ def main():
     import time
     import gzip
 
-    combined_vcf = tips_vcf + taps_vcf
-    combined_vcf = sorted(combined_vcf, key=lambda x: (x[0], int(x[1])))
+    if "tips" in parameters.modus and "taps" in parameters.modus:
+
+        combined_vcf = tips_vcf + taps_vcf
+        combined_vcf = sorted(combined_vcf, key=lambda x: (x[0], int(x[1])))
+
+    elif "tips" in parameters.modus:
+
+        combined_vcf = tips_vcf
+
+    elif "taps" in parameters.modus:
+
+        combined_vcf = taps_vcf
+
 
     date = time.strftime("%d/%m/%Y")
 
@@ -240,7 +288,7 @@ def main():
 
     with gzip.open(args.outfolder + '.detettore.vcf.gz', 'wt') as f:
 
-        f.write('\n'.join(metainfo))
+        f.write('\n'.join(metainfo)+'\n')
 
         for line in combined_vcf:
 

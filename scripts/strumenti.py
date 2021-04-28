@@ -15,15 +15,16 @@ import pysam
 import sys
 import numpy as np
 import math
+import re
 
 from scripts import bamstats
 
 from Bio import SeqIO
 from math import fabs
-from random import random
+from random import random, sample
 from collections import Counter
 from joblib import Parallel, delayed
-from numba import prange
+from numba import prange, jit
 
 from scipy import percentile
 from scipy.stats import norm
@@ -49,11 +50,12 @@ class mise_en_place:
         self.aln_len_DR = args.aln_len_DR
         self.aln_len_SR = args.aln_len_SR
         self.perc_id = args.perc_id
-        self.word_size = args.word_size
+        self.kmer_len = args.kmer_len
 
         # Program settings
         self.modus = args.modus
         self.cpus = args.cpus
+        self.include_invariant = args.include_invariant
 
         # Parsed files
         self.annotation = []
@@ -131,7 +133,13 @@ class TIPs:
         """
 
         print('Aligning discordant reads to target sequences...')
-        DR_hits = minimap('discordant.fasta', parameters.targets)
+        DR_hits = minimap(
+            'discordant.fasta', 
+            parameters.targets, 
+            parameters.aln_len_DR,
+            k=15,
+            w=11
+            )
         print('%i anchor mates map to a TE' % (len(DR_hits)))
 
 
@@ -181,7 +189,13 @@ class TIPs:
             splitreads,
             parameters.aln_len_SR)
 
-        SR_minimapd = minimap(fasta, parameters.targets)
+        SR_minimapd = minimap(
+            fasta, 
+            parameters.targets, 
+            parameters.aln_len_SR,
+            k=9,
+            w=5
+            )
         print('%i soft-clipped read parts map to a TE' % (len(SR_minimapd)))
 
         self.SR_clusters = summarize_clusters(
@@ -285,12 +299,16 @@ class TIPs:
 
             # Get highest scoring TE
             best = get_highest_scoring_TE(te_hits)
-
             te = best[0]
+            
+            # At least two supporting reads from either side
+            if te_hits[te]['side'][0] < 2 or  te_hits[te]['side'][1] < 2:
+                continue
+                        
             te_start = min(te_hits[te]['aligned_positions'])
             te_end = max(te_hits[te]['aligned_positions'])
             te_strand = '+' if te_hits[te]['strand']['+'] > te_hits[te]['strand']['-'] else '-'
-
+            
             MEINFO = '%s,%i,%i,%s' % (te, te_start, te_end, te_strand)
 
 
@@ -316,7 +334,14 @@ class TIPs:
 
                 ref_Q = [discordant.ref_support[x] for x in discordant.ref_support]
                 alt_Q = [discordant.te_hits[te]['combined_mapqs'][x] for x in discordant.te_hits[te]['combined_mapqs']]
-
+                
+                # Subsample to avoid numpy issues with extremely low or high values
+                if len(ref_Q) > 200:
+                    ref_Q = sample(ref_Q, 200)
+                    
+                if len(alt_Q) > 200:
+                    alt_Q = sample(alt_Q, 200)
+                
                 genotype = get_genotype(ref_Q, alt_Q)
 
             # if genotype[0] == '0/0':
@@ -406,19 +431,21 @@ class TAPs:
         isize_stats = (parameters.isize_mean,
                        parameters.isize_stdev,
                        parameters.readlength)
-
+        
+        
         print('\nExtracting read pairs with deviant insert sizes around annotated features\n...')
+       
+ 
         inputs = [(i, x) for i, x  in enumerate(parameters.annotation)]
 
         self.candidates = Parallel(n_jobs=parameters.cpus)(delayed(self.process_taps)\
-                                               (i,
-                                                isize_stats,
-                                                parameters.bamfile,
-                                                parameters.ref_contigs,
-                                                parameters.uniq) for i in inputs
-                                               )
-
-
+                                                (i,
+                                                parameters,
+                                                isize_stats
+                                                ) for i in inputs
+                                                )
+        
+        
     def extract_deviant_reads(self, region, isize_stats, bamfile, mapq):
 
         """
@@ -527,20 +554,20 @@ class TAPs:
                 self.deviant_reads['mapqs'][k] = mapq_sum
 
 
-        #def add_reference_support(self):
-
-
     def process_taps(
             self,
             annot_entry,
-            isize_stats,
-            bamfile,
-            contigs,
-            uniq):
+            parameters,
+            isize_stats
+            ):
 
         """ Check if there are deviant read-pairs around the annotated feature
         """
-
+            
+        contigs = parameters.ref_contigs
+        bamfile = parameters.bamfile
+        uniq = parameters.uniq
+    
         i, feature = annot_entry
         isize_mean, isize_stdev, readlength = isize_stats
 
@@ -561,6 +588,9 @@ class TAPs:
 
         deviant = self.extract_deviant_reads(region, isize_stats, bamfile, uniq)
 
+
+        """ TO DO: include invariant sites
+        """
         if not deviant:
             return None
 
@@ -576,8 +606,8 @@ class TAPs:
                 ]
             )
 
-        summary.add_deviant_info(deviant)
-
+        summary.add_deviant_info(deviant)    
+        
         return summary
 
 
@@ -601,7 +631,11 @@ class TAPs:
 
 
             if site:
-
+                
+                # At least two read pairs
+                if site.deviant_reads['nr_deviant'] < 2:
+                    continue
+                
                 if site.deviant_reads['deviation'] < site.annotated_TE['length']:
                     continue
 
@@ -727,9 +761,13 @@ class read_cluster:
                     'hit_mapqs' : {},
                     'anchor_mapqs' : {},
                     'combined_mapqs' : {},
-                    'aligned_positions' : set()
+                    'aligned_positions' : set(),
+                    'side' : [0,0]
                     }
 
+            
+            # Counting support from down- and upstream
+            self.te_hits[target]['side'][s] += 1
 
             # Strand of the insertion
             if modus == 'splitreads':
@@ -1212,9 +1250,32 @@ def blastn(query, min_perc_id, word_size, cpus):
     return blast_out
 
 
-def minimap(queries, targets):
+def minimap(queries, targets, min_aln_len, k, w):
 
-    cmd = ['minimap2', '-x', 'sr', targets, queries]
+    """ Map discordant reads and split reads against TE consensus library. Mapq is the crucial
+    output here, as it is later used to calculate genotype likelihoods.
+    
+    k: Minimizer k-mer length
+    w: Minimizer window size [2/3 of k-mer length]. A minimizer is the smallest k-mer in a window of w consecutive k-mers.
+    
+    
+    If TEs contain internal repeats, e.g LTR retrotransposons, this can result in multimappers and
+    a mapq of 0. To correct for this, mapq is recalculated, setting s2 (f2 in Li 2018) to 0.
+
+    mapq = 40 * (1-s2/s1) * min(1,m/10) * log(s1)
+
+    Li 2018: "Minimap2: Pairwise alignment for nucleotide sequences"
+    """
+
+    cmd = [
+        'minimap2', 
+        '-xsr', 
+        '--secondary=yes', 
+        '-k', str(k), 
+        '-w', str(w),
+        targets, 
+        queries
+        ]
 
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     output_raw = proc.stdout.read().splitlines()
@@ -1226,27 +1287,58 @@ def minimap(queries, targets):
         line = line.decode('utf-8')
 
         fields = line.strip().split()
+        
+        if int(fields[10]) < min_aln_len:
+            continue
+        
         readname = fields[0]
 
-        if readname in minimapd:
-            if minimapd[readname]['aln_block_length'] > int(fields[10]):
-                continue
+        d = {
 
-        minimapd[readname] = {
-
-            #'query_len' : fields[1],
-            #'query_start' : fields[2],
-            #'query_end' : fields[3],
             'strand' : fields[4],
+
             'target_name' : fields[5],
-            #'target_length' : fields[6],
             'target_start' : int(fields[7]),
             'target_end' : int(fields[8]),
-            #'nr_residue_matches' : fields[9], # number of sequence matches
+            'target_range' : set(range(int(fields[7]), int(fields[8]))),
+
             'aln_block_length' : int(fields[10]), # total nr of matches, mismatches, indels
-            'mapping_quality' : int(fields[11])
+            'mapping_quality' : int(fields[11]),
+
+            'tp' : re.search(r'tp:A:(.*?)\t', line).group(1),
+            'cm' : int(re.search(r'cm:i:(.*?)\t', line).group(1)),
+            's1' : int(re.search(r's1:i:(.*?)\t', line).group(1)),
+            's2' : int(re.search(r's1:i:(.*?)\t', line).group(1))
 
             }
+
+        # Secondary alignments: if they align to the same element, recalibrate mapping quality.
+        if readname in minimapd:
+
+            if d['target_name'] == minimapd[readname]['target_name']:
+
+                d_primary = minimapd[readname]
+
+                # the min(1, m/10) term in the formula,
+                # xmin = d_primary['mapping_quality'] / \
+                #     (40 * (1 - (d_primary['s2'] / d_primary['s1'])) * np.log(d_primary['s1']))
+                
+                xmin = 1 if (minimapd[readname]['cm'] / 10) >= 1 else minimapd[readname]['cm']
+                
+                mapq_recal = 40 * xmin * np.log(d_primary['s1'])
+                
+                if mapq_recal > 60:
+                    mapq_recal = 60
+                
+                minimapd[readname]['mapping_quality'] = mapq_recal
+
+                # if s1 and s2 are equal, add positions form secondary alignment
+                if d['s1'] == d_primary['s1']:
+
+                    minimapd[readname]['target_range'].update(d['target_range'])
+
+        else:
+            minimapd[readname] = d
 
     return minimapd
 
@@ -1484,11 +1576,12 @@ def merge_TE_dict(DR_TE_hits, SR_TE_hits):
 
 
 def get_highest_scoring_TE(te_hits):
-    """ If reads map to multiple TEs, get the TE with
-    the highest cumulative mapping quality
+    """ If reads map to multiple TEs, get the TE with the highest cumulative mapping quality
+
+    PROBLEM: mapq of 0 for reads mapping into repeats within elements, e.g. LTRs!!
 
     """
-    score = 0
+    score = -1
     best = ''
 
     for te in te_hits:
