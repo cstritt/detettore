@@ -60,8 +60,11 @@ def local_cov(region, bamfile):
     if len(coverage) > 1:
         mean = int(statistics.mean(coverage))
         stdev = int(statistics.stdev(coverage))
-    else:
+    elif len(coverage) == 1:
         mean = int(coverage[0])
+        stdev = 'NA'
+    else:
+        mean = 0
         stdev = 'NA'
 
     return mean, stdev
