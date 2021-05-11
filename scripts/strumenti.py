@@ -375,13 +375,13 @@ class TIPs:
             if discordant and te in discordant.te_hits:
                 
                 supp_REF.update(
-                    set(discordant.te_hits[te]['hit_mapqs'].keys())
+                    set(discordant.ref_support.keys())
                     )
                 
             if split and te in split.te_hits:
                 
                 supp_REF.update(
-                    {x[:-2] for x in split.te_hits[te]['hit_mapqs'].keys()}
+                    {x[:-2] for x in split.ref_support.keys()}
                     )
                 
             supp_ALT = 0
