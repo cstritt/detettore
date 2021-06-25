@@ -24,7 +24,6 @@ from scripts import bamstats
 from Bio import SeqIO
 from random import sample
 from collections import Counter
-from joblib import Parallel, delayed
 from numba import prange
 
 from scipy import percentile
@@ -294,9 +293,8 @@ class TIPs:
 
             CHROM = site[0]
             POS = site[1]
-
             REF = parameters.ref_contigs[CHROM][POS - 1]
-            ALT = '<INS:ME>'
+            
 
             discordant = site[2]
             split = site[3]
@@ -319,6 +317,8 @@ class TIPs:
             best = get_highest_scoring_TE(te_hits)
             te = best[0]
             
+            ALT = '<INS:ME:%s>' % (te)
+            
             # At least two supporting reads from either side
             if te_hits[te]['side'][0] < 2 or  te_hits[te]['side'][1] < 2:
                 continue
@@ -333,7 +333,9 @@ class TIPs:
             """ Genotype and genotype quality
 
             Infer genotype and genotype quality from split reads if present, else
-            from discordant read pairs
+            from discordant read pairs.
+            
+            Issue: low GQ and QD values with splitreads only
 
             """
             if split and te in split.te_hits:
@@ -343,9 +345,13 @@ class TIPs:
                 ref_Q = [split.ref_support[x] for x in split.ref_support]
                 alt_Q = [split.te_hits[te]['combined_mapqs'][x] for x in split.te_hits[te]['combined_mapqs']]
 
-                genotype = get_genotype(ref_Q, alt_Q)
-
+                gt_sr = get_genotype(ref_Q, alt_Q)
+                
             else:
+                gt_sr = []
+
+
+            if discordant and te in discordant.te_hits:
 
                 discordant.get_REF_support(parameters, 'discordant')
 
@@ -359,9 +365,30 @@ class TIPs:
                 if len(alt_Q) > 200:
                     alt_Q = sample(alt_Q, 200)
                 
-                genotype = get_genotype(ref_Q, alt_Q)
-
-
+                gt_dr = get_genotype(ref_Q, alt_Q)
+                
+            else:
+                gt_dr = []
+                
+            
+            # Add phred qualities if split and discordant support same GT;
+            # if conflicting, prefer split GT
+            
+            if (gt_sr and gt_dr):
+                
+                if (gt_sr[0] == gt_dr[0]):
+                    genotype = [gt_sr[0], gt_sr[1] + gt_dr[1]]
+                
+                else:
+                    genotype = [gt_sr[0], gt_sr[1]]
+                
+            elif gt_sr and not gt_dr:
+                genotype = gt_sr
+                
+            elif gt_dr and not gt_sr:
+                genotype = gt_dr
+            
+            
             # Or keep for joined genotyping at later stage?
             if genotype[0] == '0/0':
                  continue
@@ -424,6 +451,8 @@ class TIPs:
                     TSD = consensus_from_bam(region, parameters.bamfile, [20, 30])
                     if len(TSD) > 20:
                         TSD = ''
+                else:
+                    TSD = ''
 
             else:
                 TSD = ''
@@ -825,7 +854,7 @@ class TAPs_fast:
             
             FORMAT = 'GT:GQ:AD:DP'
             
-            AD = '%i,%i' % (len(site.deviant_reads['mapqs']), len(site.ref_support))
+            AD = '%i,%i' % (len(site.ref_support), len(site.deviant_reads['mapqs']))
             
             DP = str(len(site.deviant_reads['mapqs']) + len(site.ref_support))
             

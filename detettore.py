@@ -195,7 +195,7 @@ def main():
         '##INFO=<ID=HOMLEN,Number=.,Type=Integer,Description="Length of base pair identical micro-homology at event breakpoints">',
         '##INFO=<ID=DPADJ,Number=.,Type=Integer,Description="Read Depth of adjacency">',
         '##INFO=<ID=IMPRECISE,Number=0,Type=Flag,Description="Imprecise structural variation">',
-        '##INFO=<ID=CIPOS,Number=2,Type=Integer,Description=“Confidence interval around POS for imprecise variants”>',
+        '##INFO=<ID=CIPOS,Number=2,Type=Integer,Description="Confidence interval around POS for imprecise variants"',
         '##INFO=<ID=DR,Number=2,Type=Integer,Description="Discordant reads">',
         '##INFO=<ID=SR,Number=2,Type=Integer,Description="Split reads">',
         '##INFO=<ID=AL,Number=1,Type=Integer,Description="TE alignment length">',
@@ -205,6 +205,7 @@ def main():
         '##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths for the ref and alt alleles in the order listed">',
         '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Approximate read depth">',
 
+        # Multiple ALT alleles for INS, one per family!
         '##ALT=<ID=INS:ME,Description=Transposable element insertion polymorphism (TIP)>',
         '##ALT=<ID=DEL:ME,Description=Transposable element absence polymorphism (TAP)>',
         '#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t%s' % (parameters.outname)

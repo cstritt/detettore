@@ -6,13 +6,13 @@ authors = ["cstritt <crstp.strt@gmail.com>"]
 license = "GPL-3.0"
 
 [tool.poetry.dependencies]
-python = "^3.7"
-minimap2 = { git = "https://github.com/lh3/minimap2.git" }
-pysam
-numpy
-biopython
-joblib
-numba
+python = ">=3.7,<3.10"
+mappy = {git = "https://github.com/lh3/minimap2.git"}
+biopython = "^1.79"
+numpy = "^1.21.0"
+pysam = "^0.16.0"
+numba = "^0.53.1"
+scipy = "^1.7.0"
 
 [tool.poetry.dev-dependencies]
 

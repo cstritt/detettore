@@ -17,6 +17,7 @@ import argparse
 import pysam
 import statistics
 import random
+import sys
 
 from math import fabs
 
@@ -199,6 +200,9 @@ def isize_stats(bamfile):
 
     pybam.close()
 
+    if not isizes:
+        sys.exit("\nERROR: No properly paired reads, check your bam file!")
+        
     if len(isizes) < 1e6:
         stats = core_dist_stats(isizes)
     else:
