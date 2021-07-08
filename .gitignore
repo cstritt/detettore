@@ -1,7 +1,8 @@
 .spyproject
 tools
-scripts/combineVCFs.py
 scripts/__pycache__
 detettore.step-by-step.Rmd
 testing
 scripts/TE_consensus.py
+benchmark
+load_test_params.py

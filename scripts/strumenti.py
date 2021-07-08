@@ -6,6 +6,17 @@ Toolbox for TE polymorphism detection
 
 Copyright (C) 2021 C. Stritt
 License: GNU General Public License v3. See LICENSE.txt for details.
+
+
+Issues:
+    -l. 509: GQ used instead of QUAL; use '.' for the moment
+    - implement region parameter! (also single chromosome...). l. 915
+    - skip bam stats if TAPs is not based on isize distribution anymore?
+    - isize in get_anchor_positions?
+    
+    - TIP clusters: variance of breakpoints
+    
+
 """
 
 import os
@@ -27,7 +38,8 @@ from collections import Counter
 from numba import prange
 
 from scipy import percentile
-from scipy.stats import norm
+from scipy.stats import norm, ttest_1samp
+
 
 #%% CLASSI
 
@@ -55,31 +67,50 @@ class mise_en_place:
         self.modus = args.modus
         self.cpus = args.cpus
         self.include_invariant = args.include_invariant     
+        self.require_split = args.require_split
+        
+        # Parse fasta files
+        self.ref_contigs = {
+            seq_record.id:
+                seq_record.seq for seq_record in SeqIO.parse(self.reference, "fasta")}
+            
+        self.telib = {
+            seq_record.id:
+                seq_record.seq for seq_record in SeqIO.parse(self.targets, "fasta")}
+            
+        # Region
         self.region = args.region.split(':') if args.region else None
-        if self.region:
+        
+        if self.region and len(self.region)==2:
             self.region[1] = int(self.region[1])
             self.region[2] = int(self.region[2])
 
-        # Parsed files
-        self.annotation = []
-        self.ref_contigs = {seq_record.id:
-                            seq_record.seq for seq_record in SeqIO.parse(self.reference, "fasta")}
-
-
+        elif self.region and len(self.region)==1:
+            self.region.append(0)
+            self.region.append(len(self.ref_contigs[self.region[0]]))
+            
+            
         # Load reference TE annotation
+        self.annotation = []
+
         if 'taps' in self.modus:
 
             # Check file format
             formt = self.annotation_file.split('.')[-1]
 
-            # Read in annotation
+            # Maximum TE size
+            self.longest = 0
+
             with open(self.annotation_file) as f:
                 for line in f:
                     if line.startswith('#'):
                         continue
 
                     fields = line.strip().split('\t')
-
+                    
+                    if not formt.startswith('bed') and not formt.startswith('gff'):
+                        sys.exit('Check annotation format.')
+                        
                     if formt.startswith('bed'):
 
                         entry = {
@@ -97,12 +128,12 @@ class mise_en_place:
                             'chromosome' : fields[0],
                             'start' : int(fields[3]),
                             'end' : int(fields[4]),
-                            'id' : fields[-1].split(';')[0].split('=')[-1],
+                            'id' : re.search(r'.*?=(.*?)[,;]', fields[-1]).group(1),
                             'strand' : fields[6]
                             }
-
-                    else:
-                        sys.exit('Check annotation format.')
+                        
+                    if entry['end'] -  entry['start'] > self.longest:
+                        self.longest = entry['end'] -  entry['start']
 
                     self.annotation.append(entry)
 
@@ -133,17 +164,17 @@ class TIPs:
 
     def discordant_read_pairs(self, parameters, DR_anchors):
         """
-        1) Map anchor mates against TE sequences and 2)find clusters of anchor reads
+        1) Map anchor mates against TE sequences and 2) find clusters of anchor reads
         """
 
         print('Aligning discordant reads to target sequences...')
         
         DR_hits = minimap(
             'discordant.fasta', 
-            parameters.targets, 
+            parameters, 
             parameters.aln_len_DR,
             k=15,
-            w=11
+            w=11,
             )
         
         print('%i anchor mates map to a TE' % (len(DR_hits)))
@@ -163,7 +194,7 @@ class TIPs:
             anchor_positions,
             'discordant',
             overlap_proportion=0.05,
-            min_cl_size=4
+            min_cl_size=2
             )
 
         # Summarize clusters
@@ -188,23 +219,24 @@ class TIPs:
             split_positions,
             'splitreads',
             overlap_proportion=0.05,
-            min_cl_size=4
+            min_cl_size=2
             )
 
         print('Aligning split parts to target sequences...')
         
-        fasta = write_clipped_to_fasta(
+        write_clipped_to_fasta(
             SR_clusters,
             splitreads,
             parameters.aln_len_SR)
 
         SR_minimapd = minimap(
-            fasta, 
-            parameters.targets, 
+            'softclipped.fasta', 
+            parameters,
             parameters.aln_len_SR,
             k=9,
             w=5
             )
+        
         print('%i soft-clipped read parts map to a TE' % (len(SR_minimapd)))
 
         self.SR_clusters = summarize_clusters(
@@ -298,6 +330,9 @@ class TIPs:
 
             discordant = site[2]
             split = site[3]
+            
+            if parameters.require_split and not split:
+                continue
 
 
             """ Which transposable element?
@@ -377,10 +412,14 @@ class TIPs:
             if (gt_sr and gt_dr):
                 
                 if (gt_sr[0] == gt_dr[0]):
-                    genotype = [gt_sr[0], gt_sr[1] + gt_dr[1]]
+                    genotype = [
+                        gt_sr[0], 
+                        gt_sr[1] + gt_dr[1], 
+                        [gt_sr[2][0] + gt_dr[2][0], gt_sr[2][1] + gt_dr[2][1], gt_sr[2][2] + gt_dr[2][2]]
+                        ]
                 
                 else:
-                    genotype = [gt_sr[0], gt_sr[1]]
+                    genotype = [gt_sr[0], gt_sr[1], gt_sr[2]]
                 
             elif gt_sr and not gt_dr:
                 genotype = gt_sr
@@ -435,11 +474,26 @@ class TIPs:
                 SR = 0
             
  
-            """ Number of TE positions covered
+            """ Number and proportion of TE positions covered
             """
             AL = len(te_hits[te]['aligned_positions'])
-
-
+            PROP = AL / len(parameters.telib[te])
+            
+            
+            """ Dispersal of read breakpoints in cluster (interquartile range). 
+            Large IR expected for spurious cluster, while for a true TIP reakpoints
+            should be centered around the insertion site
+            """
+            breakpoints = []
+            if discordant:
+                breakpoints += discordant.breakpoint[0] + discordant.breakpoint[1]
+            if split:
+                breakpoints += split.breakpoint[0] + split.breakpoint[1]
+            
+            q3, q1 = np.percentile(breakpoints , [75, 25])
+            IQR = q3 - q1
+            
+            
             """ Target site duplication:
             If splitreads overlap, extract the overlapping sequence if it is shorter than 15 bp
             """
@@ -452,10 +506,10 @@ class TIPs:
                     if len(TSD) > 20:
                         TSD = ''
                 else:
-                    TSD = ''
+                    TSD = '.'
 
             else:
-                TSD = ''
+                TSD = '.'
 
             TSDLEN = len(TSD)
 
@@ -489,17 +543,18 @@ class TIPs:
 
             # Imprecise event if there is no splitread information
             if split:
-                INFO = 'MEINFO=%s;SVTYPE=INS;TSD=%s;TSDLEN=%i;DPADJ=%i;DR=%i;SR=%i;AL=%i' \
-                    % (MEINFO, TSD, TSDLEN, DPADJ, DR, SR, AL)
+                INFO = 'MEINFO=%s;SVTYPE=INS;TSD=%s;TSDLEN=%i;DPADJ=%i;DR=%i;SR=%i;AL=%i;AP=%f;BPIQR=%i' \
+                    % (MEINFO, TSD, TSDLEN, DPADJ, DR, SR, AL, round(PROP, 2), IQR)
             else:
-                INFO = 'MEINFO=%s;SVTYPE=INS;HOMSEQ=%s;HOMLEN=%i;DPADJ=%i;DR=%i;SR=%i;AL=%i;IMPRECISE;CIPOS=%i,%i' \
-                    % (MEINFO, TSD, TSDLEN, DPADJ, DR, SR, AL, CI_lower, CI_upper)
+                INFO = 'MEINFO=%s;SVTYPE=INS;HOMSEQ=%s;HOMLEN=%i;DPADJ=%i;DR=%i;SR=%i;AL=%i;IMPRECISE;CIPOS=%i,%i;AP=%f;BPIQR=%i' \
+                    % (MEINFO, TSD, TSDLEN, DPADJ, DR, SR, AL, CI_lower, CI_upper, round(PROP, 2), IQR)
 
 
-            FORMAT = 'GT:GQ:AD:DP'
-            GT = '%s:%i:%s:%i' % (genotype[0], genotype[1], AD, DP)
+            FORMAT = 'GT:GQ:AD:DP:PL'
+            PL = [str(int(x)) for x in genotype[2]]
+            GT = '%s:%i:%s:%i:%s' % (genotype[0], genotype[1], AD, DP, ','.join(PL))
             
-            outline = [CHROM, POS, '.', REF, ALT, genotype[1], 'PASS', INFO, FORMAT, GT]
+            outline = [CHROM, POS, '.', REF, ALT, '.', 'PASS', INFO, FORMAT, GT]
             
             vcf_lines.append(outline)
             
@@ -699,7 +754,7 @@ class read_cluster:
         pybam.close()
         
         
-class TAPs_fast:
+class TAPs:
     
     """
     Detect TE insertions present in the reference and absent in the
@@ -734,8 +789,8 @@ class TAPs_fast:
         te, parameters = te_params
         
         # Region in which to look for reads
-        region_start = te['start'] - parameters.isize_mean 
-        region_end = te['end'] + parameters.isize_mean
+        region_start = te['start'] - 2*parameters.readlength
+        region_end = te['end'] + 2*parameters.readlength
         
         # Reset coordinates if they are 'outside' chromosomes
         if region_start < 0:
@@ -753,16 +808,18 @@ class TAPs_fast:
         # Regional coverage
         cov_mean, cov_stdev = bamstats.local_cov(region, parameters.bamfile)
         
-        summary = self.TAP_candidate(
+        if not parameters.include_invariant and not deviant[0]:
+            return None
             
-            te,
-            region,
-            deviant, 
-            cov_mean
+        else:
+            summary = self.TAP_candidate(
+                te,
+                region,
+                deviant, 
+                cov_mean
+                )
             
-            )
-        
-        return summary
+            return summary
         
                 
     class TAP_candidate:
@@ -781,10 +838,13 @@ class TAPs_fast:
             if deviant[0]:
 
                 self.deviant_reads = {
+                    
                     'nr_deviant' : len(deviant[0]),
                     
-                    'deviation' : statistics.median(
-                        [deviant[0][k][0] for k in deviant[0]]),
+                    # 'deviation' : statistics.median(
+                    #     [deviant[0][k][0] for k in deviant[0]]),
+                    
+                    'deviations' : [deviant[0][k][0] for k in deviant[0]],
                     
                     'start' : max(
                         [deviant[0][k][2] for k in deviant[0]]),
@@ -804,6 +864,21 @@ class TAPs_fast:
             
     def output_vcf(self, parameters):
         
+        """
+        Heterozygous TAPs, as they might arise from somatic transposition, 
+        are not considered. If both REF and ALT support is found, this is 
+        scored as 0/0, that is, presence of the annotated TE.
+        
+        This is because heterozygous calls are not reliable for short
+        DNA transposons, which do not clearly recognizable deviant insert sizes.     
+        
+        Implement additional tests: 
+            - presence of split reads at breakpoints
+            - prob of finding n among m reads with deviation x, given isize mean and stdev
+        
+        
+        """
+        
         vcf_lines = []
         
         stats = {
@@ -814,7 +889,10 @@ class TAPs_fast:
             }
 
         for i, site in enumerate(self.candidates):
-
+            
+            if not site:
+                continue
+            
             te = parameters.annotation[i]
 
             CHROM = te['chromosome']
@@ -828,14 +906,31 @@ class TAPs_fast:
             
             DPADJ = site.context['mean_coverage']
             
-            INFO = 'MEINFO=%s;SVTYPE=DEL;SVLEN=%i;DPADJ=%i' % (MEINFO, SVLEN, DPADJ)            
+            
+            # Probability that deviant insert sizes differ from mean isize: one-sample t test
+            if site.deviant_reads['mapqs']:
+                
+                tStat, pVal =  ttest_1samp(
+                    site.deviant_reads['deviations'], parameters.isize_mean, axis=0
+                    )
+                
+                PDEV = str(round(pVal, 3))
+                
+            else:
+                PDEV = '1'
+            
+            INFO = 'MEINFO=%s;SVTYPE=DEL;SVLEN=%i;DPADJ=%i;PDEV=%s' % (MEINFO, SVLEN, DPADJ, PDEV)            
             
             
             """ Calculate genotype likelihood and quality
+            
             """
+            
+
             ref_Q = [site.ref_support[k] for k in site.ref_support]
             alt_Q = [site.deviant_reads['mapqs'][k] for k in site.deviant_reads['mapqs']]
             
+
             # Subsample to avoid numpy issues with extremely low or high values
             if len(ref_Q) > 200:
                 ref_Q = sample(ref_Q, 200)
@@ -843,22 +938,24 @@ class TAPs_fast:
             if len(alt_Q) > 200:
                 alt_Q = sample(alt_Q, 200)
             
-            GT, GQ = get_genotype(ref_Q, alt_Q)
+            GT, GQ, PL = get_genotype(ref_Q, alt_Q)
+            PL = [str(int(x)) for x in PL]
+            
             
             # Code as missing if GQ is 0
             if GQ == 0:
                 GT = './.'
                 
-            if not parameters.include_invariant and GT == '0/0':
+            if not parameters.include_invariant and GT in ['0/0', './.']:
                 continue
             
-            FORMAT = 'GT:GQ:AD:DP'
+            FORMAT = 'GT:GQ:AD:DP:PL'
             
             AD = '%i,%i' % (len(site.ref_support), len(site.deviant_reads['mapqs']))
             
             DP = str(len(site.deviant_reads['mapqs']) + len(site.ref_support))
             
-            gt_field = '%s:%i:%s:%s' % (GT, GQ, AD, DP)
+            gt_field = '%s:%i:%s:%s:%s' % (GT, GQ, AD, DP, ','.join(PL))
 
             outline = [CHROM, POS, '.', REF, ALT, GQ, 'PASS', INFO, FORMAT, gt_field]
             vcf_lines.append(outline)
@@ -895,12 +992,11 @@ def get_split_and_discordant_reads(parameters):
         splitreads = dict()
         split_positions = dict()
         
-        if parameters.region:
-            chrm, start, end  = parameters.region
-        else: 
-            chrm, start, end = None, None, None
 
-        for read in pybam.fetch(chrm, start, end):
+        """ Traverse whole bam even if region is set, else discordant 
+        mates mapping to TEs elsewhere will be missed!!
+        """
+        for read in pybam.fetch():
 
             clipped = is_softclipped(read, parameters.aln_len_SR)
 
@@ -908,13 +1004,6 @@ def get_split_and_discordant_reads(parameters):
                 continue
 
             name = read.query_name
-
-            """
-            While BWA always outputs the XS tag, Bowtie2 only does it when
-            there is a secondary alignment
-            """
-            #AS = read.get_tag('AS')
-            #XS = read.get_tag('XS')
 
 
             """
@@ -935,7 +1024,16 @@ def get_split_and_discordant_reads(parameters):
 
                 chrmsm = pybam.getrname(read.reference_id)
                 strt, end = read.reference_start, read.reference_end
-
+                
+                if parameters.region:
+                            
+                    if chrmsm != parameters.region[0]:
+                        continue
+                    
+                    if (strt not in range(parameters.region[1], parameters.region[2]) and
+                        end not in range(parameters.region[1], parameters.region[2])):
+                        continue
+            
                 if read.is_read1:
                     name = name +'/1'
                 else:
@@ -960,41 +1058,54 @@ def get_split_and_discordant_reads(parameters):
             """
             if not read.is_proper_pair:
 
-                #if AS-XS < parameters.uniq:
+                # Anchor or not
                 if read.mapping_quality < parameters.mapq:
                     uniq = 0
                 else:
                     uniq = 1
-
+                    
                 if read.is_read1:
                     read_nr = 1
                 else:
                     read_nr = 2
 
                 if name in discordant_mates:
+                    
                     uniq_mate = discordant_mates[name][2]
+                    
+                    # Anchor + multimapper: write multimapper to fasta
                     if uniq + uniq_mate == 1:
-
+                        
                         mate_read = discordant_mates[name][0]
 
                         if uniq == 1:
-
-                            seq = mate_read.query_sequence
-                            if seq.count('N')/float(len(seq)) > 0.1:
-                                continue
-
-                            discordant_anchors[name] = read
-                            header = '>' + name
-                            fasta.write(header + '\n' + seq + '\n')
-
+                            anchor = read
+                            multimapper = mate_read
+                            
                         else:
-                            seq = read.query_sequence
-                            if seq.count('N')/float(len(seq)) > 0.1:
+                            anchor = mate_read
+                            multimapper = read
+                            
+                        if parameters.region:
+                            
+                            chrmsm = pybam.getrname(anchor.reference_id)
+                            
+                            if chrmsm != parameters.region[0]:
                                 continue
+                            
+                            if (anchor.reference_start not in range(parameters.region[1], parameters.region[2]) and
+                                anchor.reference_end not in range(parameters.region[1], parameters.region[2])):
+                                continue
+                            
+                        seq = multimapper.query_sequence
+                        discordant_anchors[name] = anchor
+                            
+                        # More than 10% of Ns
+                        if seq.count('N')/float(len(seq)) > 0.1:
+                            continue
 
-                            discordant_anchors[name] = mate_read
-                            header = '>' + name
-                            fasta.write(header + '\n' + seq + '\n')
+                        header = '>' + name
+                        fasta.write(header + '\n' + seq + '\n')
 
                     del discordant_mates[name]
 
@@ -1012,87 +1123,81 @@ def extract_deviant_reads(te,  region, parameters):
         """
         Returns a dictionary d[read name] = [isize, AlignedSegment objects]
         
-        TO DO: get ref supporting reads at the same time
-        
+        IMPROVE: 
+            Only look up reads until start position of TE
+
         """
         
         deviant_read_pairs = {}
         ref_support = {}
-        
     
         # Insert size threshold
-        q_upper = int(norm.ppf(0.99, parameters.isize_mean, parameters.isize_stdev))
+        #q_upper = int(norm.ppf(0.95, parameters.isize_mean, parameters.isize_stdev))
 
-        # Get ALT and REF supporting reads from bam
         pybam = pysam.AlignmentFile(parameters.bamfile, "rb")
 
-        for read in pybam.fetch(te['chromosome'], region[1], region[2]):
+        for read in pybam.fetch(
+                te['chromosome'], 
+                region[1], 
+                region[2],
+                multiple_iterators=True):
 
             name = read.query_name
             
+            # Filtering
             # bad read pair
-            if read.mapping_quality < parameters.mapq or not read.is_paired:
+            if (read.mapping_quality < parameters.mapq or 
+                not read.is_paired or 
+                read.is_secondary or 
+                read.is_supplementary):
                 continue
 
             # discard non-properly oriented reads
-            if (read.mate_is_reverse and read.is_reverse) or \
-                (not read.is_reverse and not read.mate_is_reverse):
+            if ( (read.mate_is_reverse and read.is_reverse) or 
+                (not read.is_reverse and not read.mate_is_reverse) ):
                 continue
 
-            isize = abs(read.template_length) - (2*parameters.readlength)
+            isize = abs(read.template_length) - (2*parameters.readlength)            
             
             # isize larger than any TE insertion
-            if isize > 30000:
+            if isize > parameters.longest + 1000:
                 continue
             
-            
+
             # ALT support
-            """ Get neat deviant reads with 5' on forward and 3' on reverse
-            """
-            if isize > q_upper and isize > (te['end'] - te['start']):
+            
+            # Mate already identified as deviant
+            if name in deviant_read_pairs: 
                 
-                # Reverse read
-                if name in deviant_read_pairs: 
-                    deviant_read_pairs[name].append(read.reference_start)
-                    deviant_read_pairs[name][1] += read.mapping_quality
+                deviant_read_pairs[name].append(read.reference_start)
+                deviant_read_pairs[name][1] += read.mapping_quality
+            
+            # New deviant pair
+            elif ( read.reference_end <= te['start'] and read.next_reference_start >= te['end'] ):
+
+                deviant_read_pairs[name] = [isize, read.mapping_quality, read.reference_end]
                 
-                else:
-                    deviant_read_pairs[name] = [isize, read.mapping_quality, read.reference_end]
-    
-                # # Forward read
-                # if not read.is_reverse and read.mate_is_reverse:
-                #     deviant_read_pairs[name] = [isize, read.mapping_quality, read.reference_end]
-    
-                # # Reverse read
-                # elif name in deviant_read_pairs and read.is_reverse and not read.mate_is_reverse:
-                #     deviant_read_pairs[name].append(read.reference_start)
-                #     deviant_read_pairs[name][1] += read.mapping_quality
-                    
-    
+                
             # REF support
             else:
                 
-                # Exclude clipped reads
-                # if 'S' in read.cigarstring or 'H' in read.cigarstring:
-                #     continue
-
-                if read.query_name in ref_support:
-                    ref_support[read.query_name] += read.mapping_quality
-
+                if name in ref_support:
+                    ref_support[name] += read.mapping_quality
+                    
                 else:
+                    
+                    # Allow few base pairs as error margin. If not, a single position
+                    # overlap will be considered as supporting the reference allele ...
+                    insert_interval = range(read.reference_end-2, read.next_reference_start+2)
 
-                    insert_interval = range(read.reference_end, read.next_reference_start)
-
-                    if \
-                        te['start'] in insert_interval and not te['end'] in insert_interval or \
-                        te['end'] in insert_interval and not te['start'] in insert_interval:
-
+                    if (  (te['start'] in insert_interval and not te['end'] in insert_interval) or
+                          (te['end'] in insert_interval and not te['start'] in insert_interval) ):
+                        
                         ref_support[read.query_name] = read.mapping_quality
                         
- 
         pybam.close()
         
-        # 
+        # Remove if mate of deviant read pair has not been recovered
         remove = []
 
         for name in deviant_read_pairs:
@@ -1101,9 +1206,8 @@ def extract_deviant_reads(te,  region, parameters):
 
         for name in remove:
             deviant_read_pairs.pop(name)
-
+            
         return deviant_read_pairs, ref_support
-
 
 
 def remove_outliers(lista):
@@ -1175,7 +1279,6 @@ def write_clipped_to_fasta(clusters, reads, min_clip_length):
                 outline = header + '\n' + seq + '\n'
                 f.write(outline)
     f.close()
-    return fasta
 
 
 def cluster_reads(positions, modus, overlap_proportion=0.05, min_cl_size=4):
@@ -1256,7 +1359,7 @@ def cluster_reads(positions, modus, overlap_proportion=0.05, min_cl_size=4):
     return clusters_filt
 
 
-def minimap(queries, targets, min_aln_len, k, w):
+def minimap(queries, parameters, min_aln_len, k, w):
 
     """ Map discordant reads and split reads against TE consensus library. Mapq is the crucial
     output here, as it is later used to calculate genotype likelihoods.
@@ -1279,19 +1382,22 @@ def minimap(queries, targets, min_aln_len, k, w):
         '--secondary=yes', 
         '-k', str(k), 
         '-w', str(w),
-        targets, 
+        parameters.targets, 
         queries
         ]
 
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     output_raw = proc.stdout.read().splitlines()
 
+    outfile = open('%s.k%i.paf' % (parameters.outname, k), 'w')
+
     minimapd = {}
 
     for line in output_raw:
 
         line = line.decode('utf-8')
-
+        outfile.write(line + '\n')
+          
         fields = line.strip().split()
         
         if int(fields[10]) < min_aln_len:
@@ -1598,7 +1704,7 @@ def get_genotype(ref_Q, alt_Q):
 
     GQ = round(Q_norm[1] - Q_norm[0])
 
-    return GT, GQ
+    return GT, GQ, Q_norm
 
 
 def GL(g, ref_errP, alt_errP, m):

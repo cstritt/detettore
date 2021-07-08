@@ -4,6 +4,11 @@
 
 Copyright (C) 2021 C. Stritt
 License: GNU General Public License v3. See LICENSE.txt for details.
+
+
+FACIENDA:
+    - check DP and GT assignement for TAPs
+
 """
 
 import argparse
@@ -32,75 +37,87 @@ def get_args():
 
 
     # REQUIRED
-    parser_input.add_argument('-b', 
-                              dest="bamfile",
-                              required=True,
-                              help='bwa mem alignment to reference genome.')
+    parser_input.add_argument(
+        '-b', dest="bamfile",
+        required=True,
+        help='Paired-end reads aligned to reference genome.')
 
-    parser_input.add_argument("-r", 
-                              dest="reference",
-                              required=True,
-                              help='Reference genome in fasta format. Required to calculate read statistics')
+    parser_input.add_argument(
+        "-r", dest="reference",
+        required=True,
+        help='Reference genome in fasta format. Required to calculate read statistics')
 
-    parser_input.add_argument('-t', 
-                              dest="targets",
-                              required=True,
-                              help='Target sequences in fasta format.')
+    parser_input.add_argument(
+        '-t', dest="targets",
+        required=True,
+        help='TE consensus sequences in fasta format.')
 
-    parser_input.add_argument('-a', 
-                              dest="annot",
-                              help='TE annotation in gff or bed format. Required for absence module.')
-    
-    parser_settings.add_argument('-o', 
-                                 dest='outname',
-                                 required=True,
-                                 help='Prefix for output files.')
-    
-    
+    parser_input.add_argument(
+        '-a', dest="annot",
+        help='TE annotation in gff or bed format. Required for absence module.')
+
+    parser_settings.add_argument(
+        '-o', dest='outname',
+        required=True,
+        help='Sample name (prefix for output files).')
+
+
     # PROGRAM SETTINGS
-    parser_settings.add_argument('-m', 
-                                 dest='modus',
-                                 nargs='+', 
-                                 required=True,
-                                 choices=['tips','taps'],
-                                 help='Program modus.')
+    parser_settings.add_argument(
+        '-m', dest='modus',
+        nargs='+',
+        required=True,
+        choices=['tips','taps'],
+        help='Program modus.')
 
-    parser_settings.add_argument('--keep',
-                                 action='store_true',
-                                 help='Keep intermediate files.')
+    parser_settings.add_argument(
+            '-c', dest='cpus',
+            type= int, default=1,
+            help='Number of CPUs. [1]')
 
-    parser_settings.add_argument('--region', dest='region',
-                                 type=str,
-                                 help='Restrict TE polymorphism search to specific region <chromosome:start:end>.')
+    parser_settings.add_argument(
+        '--region', dest='region',
+        type=str,
+        help='Restrict TE polymorphism search to specific region <chromosome:start:end>.')
 
-    parser_settings.add_argument('--include_invariant',
-                                 action='store_true',
-                                 help='Include conserved TEs in vcf output.')
+    parser_settings.add_argument(
+        '--include_invariant',
+        action='store_true',
+        help='Include conserved TEs in vcf output.')
+
+    parser_settings.add_argument(
+        '--require_split',
+        action='store_true',
+        help='Discard variant candidates for which there is no splitread evidence.')
+
+    parser_settings.add_argument(
+        '--keep',
+        action='store_true',
+        help='Keep intermediate files.')
 
 
     # THRESHOLDS
-    parser_thresholds.add_argument('-q', dest="mapq",
-                        type=int, default=20,
-                        help='Minimum mapping quality of reference-aligned reads. [20]')
+    parser_thresholds.add_argument(
+        '-q', dest="mapq",
+        type=int, default=20,
+        help='Minimum mapping quality of reference-aligned reads. [20]')
 
-    parser_thresholds.add_argument('-lSR', dest='aln_len_SR',
-                        type=int, default=20,
-                        help='Minimum alignment length for splitread target hits. [20]')
+    parser_thresholds.add_argument(
+        '-lSR', dest='aln_len_SR',
+        type=int, default=15,
+        help='Minimum alignment length for splitread target hits. [15]')
 
-    parser_thresholds.add_argument('-lDR', dest='aln_len_DR',
-                        type=int, default=50,
-                        help='Minimum alignment length for discordant read-pair target hits. [50]')
-
-    parser_thresholds.add_argument('-c', dest='cpus',
-                        type= int, default=1,
-                        help='Number of CPU used for the blast search. [1]')
+    parser_thresholds.add_argument(
+        '-lDR', dest='aln_len_DR',
+        type=int, default=50,
+        help='Minimum alignment length for discordant read-pair target hits. [50]')
 
     args=parser.parse_args()
 
     return args
 
 
-#%%
+#%% MAIN
 
 def main():
 
@@ -113,11 +130,11 @@ def main():
     except OSError:
         pass
     os.chdir(args.outname + '_tmp')
-    
+
     # Turn off warnings (switch with python -W on command line)
     if not sys.warnoptions:
         warnings.simplefilter("ignore")
-    
+
 
     #%% TIPs
     if "tips" in parameters.modus:
@@ -145,17 +162,17 @@ def main():
 
         # VCF output
         tips_vcf, tips_stats = tips.output_vcf(parameters)
-        
+
         print('\nTIP search finished successfully')
 
-    
+
     #%% TAPs
     if "taps" in parameters.modus:
 
         print('\n\nSEARCHING TE ABSENCE POLYMORPHISMS')
         print('\nExtracting read pairs around annotated TEs ...')
-        
-        taps = strumenti.TAPs_fast(parameters)
+
+        taps = strumenti.TAPs(parameters)
         taps_vcf, taps_stats = taps.output_vcf(parameters)
 
         print('TAP search finished successfully\n')
@@ -199,61 +216,64 @@ def main():
         '##INFO=<ID=DR,Number=2,Type=Integer,Description="Discordant reads">',
         '##INFO=<ID=SR,Number=2,Type=Integer,Description="Split reads">',
         '##INFO=<ID=AL,Number=1,Type=Integer,Description="TE alignment length">',
-
+        '##INFO=<ID=AP,Number=1,Type=Integer,Description="Proportion of TE covered by reads">',
+        '##INFO=<ID=BPIQR,Number=1,Type=Integer,Description="Interquartile range of insertion breakpoints. Large for spurious read clusters">'
+        
         '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
         '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">',
         '##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths for the ref and alt alleles in the order listed">',
         '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Approximate read depth">',
+        '##FORMAT=<ID=PL,Number=G,Type=Integer,Description="Normalized, Phred-scaled likelihoods for genotypes as defined in the VCF specification">',
 
         # Multiple ALT alleles for INS, one per family!
         '##ALT=<ID=INS:ME,Description=Transposable element insertion polymorphism (TIP)>',
         '##ALT=<ID=DEL:ME,Description=Transposable element absence polymorphism (TAP)>',
         '#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t%s' % (parameters.outname)
         ]
-    
-    
+
+
     os.chdir('..')
-    
+
     with gzip.open(args.outname + '.detettore.vcf.gz', 'wt') as f:
 
         f.write('\n'.join(metainfo)+'\n')
         for line in combined_vcf:
             f.write('\t'.join(map(str, line)) + '\n')
 
-    
+
     # # Stats file
     if 'tips' in parameters.modus:
         print(
             'TIPs summary:\n0/1:%i\n1/1:%i\n' % (tips_stats['0/1'], tips_stats['1/1'])
             )
-        
+
     if 'taps' in parameters.modus:
         print(
             'TAPs summary:\n0/0:%i\n0/1:%i\n1/1:%i\n./.:%i\n' % (taps_stats['0/0'],taps_stats['0/1'], taps_stats['1/1'], taps_stats['./.'])
             )
-    
+
     # with open(args.outname + '.stats.tsv', 'w') as f:
-        
-        
+
+
     # Create log file
     logging.basicConfig(
             filename = args.outname +'.log',
             filemode='a',
             format = '%(levelname)-10s %(asctime)s %(message)s',
             level = logging.DEBUG)
-    
+
     log = logging.getLogger(args.outname +'.log')
-    
+
     log.info('readlength: %i, isize_mean: %i, isize_stdev: %i' % (
-        parameters.readlength, parameters.isize_mean, parameters.isize_stdev)) 
-             
+        parameters.readlength, parameters.isize_mean, parameters.isize_stdev))
+
     log.info(args)
-    
-    
+
+
     # Clean up
     if not args.keep:
         shutil.rmtree(args.outname + '_tmp')
-    
-    
+
+
 if __name__ == '__main__':
     main()
