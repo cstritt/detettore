@@ -551,7 +551,7 @@ class TIPs:
 
 
             FORMAT = 'GT:GQ:AD:DP:PL'
-            PL = [str(int(x)) for x in genotype[2]]
+            PL = [str(x) for x in genotype[2]]
             GT = '%s:%i:%s:%i:%s' % (genotype[0], genotype[1], AD, DP, ','.join(PL))
             
             outline = [CHROM, POS, '.', REF, ALT, '.', 'PASS', INFO, FORMAT, GT]
@@ -939,8 +939,7 @@ class TAPs:
                 alt_Q = sample(alt_Q, 200)
             
             GT, GQ, PL = get_genotype(ref_Q, alt_Q)
-            PL = [str(int(x)) for x in PL]
-            
+            PL = [str(x) for x in PL]
             
             # Code as missing if GQ is 0
             if GQ == 0:
