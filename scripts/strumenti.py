@@ -10,23 +10,22 @@ License: GNU General Public License v3. See LICENSE.txt for details.
 
 Issues:
     -l. 509: GQ used instead of QUAL; use '.' for the moment
-    - implement region parameter! (also single chromosome...). l. 915
-    - skip bam stats if TAPs is not based on isize distribution anymore?
-    - isize in get_anchor_positions?
+        
+    - TE annotation: require bed format, with name in col5 and (optionally)
+    family in col6. If family is not provided, it is inferred from the consensus library
     
-    - TIP clusters: variance of breakpoints
     
 
 """
 
 import os
-import statistics
 import subprocess
 import pysam
 import sys
 import numpy as np
 import math
 import re
+import scipy
 import copy
 import multiprocessing as mp
 
@@ -36,9 +35,8 @@ from Bio import SeqIO
 from random import sample
 from collections import Counter
 from numba import prange
+from scipy.stats import ttest_1samp
 
-from scipy import percentile
-from scipy.stats import norm, ttest_1samp
 
 
 #%% CLASSI
@@ -139,15 +137,25 @@ class mise_en_place:
 
         # Estimate read statistics
         print('Estimating bam read statistics\n...')
-        readinfo = bamstats.write_output(self.bamfile, 'dict')
-
-        self.readlength = readinfo['readlength']
-        self.isize_mean = readinfo['isize_mean']
-        self.isize_stdev = readinfo['isize_stdev']
-
+        readinfo = bamstats.return_dict(self.bamfile)
         for k in readinfo:
-            print(k + ' : ' + str(readinfo[k]))
+                print(k + ' : ' + str(readinfo[k]))   
+        
+        # No paired-end reads!
+        if len(readinfo) == 1:
+            self.paired_end = False
+            self.readlength = readinfo['readlength']
+            self.isize_mean = 0
+            self.isize_stdev = 0            
 
+            print('\nNo paired-end reads discovered! Only TIPs based on split reads will be reported.')
+            
+        else:
+            self.paired_end = True
+            self.readlength = readinfo['readlength']
+            self.isize_mean = readinfo['isize_mean']
+            self.isize_stdev = readinfo['isize_stdev']
+    
 
 class TIPs:
 
@@ -490,7 +498,8 @@ class TIPs:
             if split:
                 breakpoints += split.breakpoint[0] + split.breakpoint[1]
             
-            q3, q1 = np.percentile(breakpoints , [75, 25])
+            q1 = scipy.percentile(breakpoints , 25)
+            q3 = scipy.percentile(breakpoints , 75)
             IQR = q3 - q1
             
             
@@ -506,10 +515,10 @@ class TIPs:
                     if len(TSD) > 20:
                         TSD = ''
                 else:
-                    TSD = '.'
+                    TSD = ''
 
             else:
-                TSD = '.'
+                TSD = ''
 
             TSDLEN = len(TSD)
 
@@ -551,7 +560,8 @@ class TIPs:
 
 
             FORMAT = 'GT:GQ:AD:DP:PL'
-            PL = [str(x) for x in genotype[2]]
+ 
+            PL = [ int(x) if not math.isinf(x) else x for x in genotype[2] ]
             GT = '%s:%i:%s:%i:%s' % (genotype[0], genotype[1], AD, DP, ','.join(PL))
             
             outline = [CHROM, POS, '.', REF, ALT, '.', 'PASS', INFO, FORMAT, GT]
@@ -1211,8 +1221,8 @@ def extract_deviant_reads(te,  region, parameters):
 
 def remove_outliers(lista):
     # outliers defined as in R's boxplots
-    q_1 = percentile(lista, 25)
-    q_3 = percentile(lista, 75)
+    q_1 = scipy.percentile(lista, 25)
+    q_3 = scipy.percentile(lista, 75)
 
     boxlength = q_3 - q_1
 

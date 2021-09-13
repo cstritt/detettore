@@ -11,21 +11,15 @@ Adds new INFO fields:
     AF: allele frequency
     NHET: number of heterozygous genotypes
     
-    
+      
 class args:
     def __init__(self):
         
-        self.vcf_path = '/home/cristobal/TB/analyses/detettore/tb_1227/risultati/vcf'
-        self.filter =  ['depth']
-        self.tbl = False
-        
-class args:
-    def __init__(self):
-        
-        self.vcf_path = '/home/cristobal/Bdis/analyses/detettore2/detetorre_Hannes_All_july2021'
-        self.filter =  ['depth']
-        self.tbl = False
-        
+        self.vcf_path = '/home/cristobal/TB/analyses/detettore/tb_1227_v2/vcfs'
+        #self.vcf_path = '/home/cristobal/TB/analyses/detettore/benchmark/simReads_Modlin/detettore'
+        self.filters =  ['require_DR_and_SR', 'no_het']
+        self.keep_invariant = True
+              
 args = args()
 
    
@@ -45,37 +39,38 @@ import time
 def get_args():
 
     parser = argparse.ArgumentParser(
-        description='Detect TE polymorphisms from paired-end read data')
+        description='Detect TE polymorphisms from paired-end read data',
+        formatter_class=argparse.RawTextHelpFormatter)
 
     parser.add_argument(
         "-p",
         dest="vcf_path",
         required=True,
         help='Path to folder containing vcf.gz output of detettore.')
-    
-    parser.add_argument(
-        "-f",
-        dest="filter",
-        nargs='+', 
-        choices=['depth', 'min_supp2', 'require_split', 'nohet'],
-        default=['depth', 'min_supp2'],
-        help='Apply filters:\n\
-            depth : discard variants in regions with a P(depth) < 0.05 \n\
-            min_supp2: \n\
-            require_split: \n\
-            nohet : discard 0/1 genotypes')
 
     parser.add_argument(
         '--keep_invariant',
         action='store_true',
         help='Keep invariant sites.')
+    
+    parser.add_argument(
+        "-f",
+        dest="filters",
+        nargs='+', 
+        choices=['require_split', 'no_het', 'require_DR_and_SR'],
+        
+        help='Apply filters:\n\
+        require_split: only keep genotypes with split read support\n\
+        no_het: discard heterozygous genotypes\n\
+        require_DR_and_SR: only keep genotypes supported by both discordant read pairs and split reads')
 
     args=parser.parse_args()
 
     return args
 
 
-def parse_vcf_lines(handler, sample_order, depth_d, vard, imprecise):
+
+def parse_vcf_lines(handler, sample_order, vard, imprecise, filters):
     
     for line in handler:
         
@@ -92,30 +87,38 @@ def parse_vcf_lines(handler, sample_order, depth_d, vard, imprecise):
         if line.startswith('#CHROM'):
             sample = fields[-1]
             sample_order.append(sample)
-            depth_d[sample] = []
             continue
         
-        # DPADJ
-        try:
-            dpadj = re.search(r'DPADJ=(.*?);', fields[7]).group(1)
-        except AttributeError:
-            dpadj = re.search(r'DPADJ=(.*?)$', fields[7]).group(1)
-        depth_d[sample].append(int(dpadj))
-         
+        
+        var_type = fields[4][1:7]
+        
+        # Filtering
+        if var_type == 'INS:ME' and filters:
+            
+            SR = re.search(r'SR=(.*?);', fields[7]).group(1)
+            DR = re.search(r'DR=(.*?);', fields[7]).group(1)
+            
+            if 'require_split' in filters and SR == '0':
+                continue
+            
+            if 'require_DR_and_SR' in filters and (SR == '0' or DR == '0'):
+                continue
+            
+        gt = fields[9].split(':')[0]
+        if 'no_het' in filters and gt == '0/1':
+            continue
         
         chromosome, pos = fields[0], int(fields[1])
-        var_type = fields[4]
         
         meinfo = re.search(r'MEINFO=(.*?);', fields[7]).group(1)
         te = meinfo.split(',')[0]  
+        uniq_id = (chromosome, pos, te)
         
         imprec = True if 'IMPRECISE' in fields[7] else False
         
-        
-        uniq_id = (chromosome, pos, te)
-        
+    
         # TAPs and precise TIPs
-        if (var_type == '<DEL:ME>') or (var_type == '<INS:ME>' and not imprec):
+        if (var_type == 'DEL:ME') or (var_type == 'INS:ME' and not imprec):
             
             if uniq_id not in vard[var_type]:
                 
@@ -134,12 +137,10 @@ def main():
 
     args = get_args()
     
+    filters = args.filters if args.filters else []
     
     #%% Load variants
-    
-    vard = { '<INS:ME>' : {}, '<DEL:ME>' : {} }
-    
-    depth_d = {}
+    vard = { 'INS:ME' : {}, 'DEL:ME' : {} }
     
     sample_order = []
     imprecise = []
@@ -148,18 +149,20 @@ def main():
         
         for f in files:
                    
-            if f.endswith('.gz'):
+            if f.endswith('.vcf.gz'):
                 handler = gzip.open(subdir + '/' + f)
                 
-            else:
+            elif f.endswith('.vcf'):
                 handler = open(subdir + '/' + f)
-                
-            parse_vcf_lines(handler, sample_order, depth_d,vard, imprecise)
+             
+            else: 
+                continue
+            
+            parse_vcf_lines(handler, sample_order, vard, imprecise, filters)
             
             handler.close()
                 
             
-
     #%% Add imprecise variants
     
     """
@@ -173,23 +176,23 @@ def main():
         meinfo = re.search(r'MEINFO=(.*?);', fields[7]).group(1)
         te = meinfo.split(',')[0]
         
-        cipos = re.search(r'CIPOS=(.*?)$', fields[7]).group(1).split(',')
+        cipos = re.search(r'CIPOS=(.*?);', fields[7]).group(1).split(',')
     
         closest = [int(), float('inf')]
            
         for i in range(int(cipos[0]), int(cipos[1])):
             
-            if (chromosome, i, te) in vard['<INS:ME>']:
+            if (chromosome, i, te) in vard['INS:ME']:
                 
                 if abs(pos-i) < closest[1]:
                     closest[0] = i
                     closest[1] = abs(pos-i)
                     
         if closest[0]:
-            vard['<INS:ME>'][(chromosome, closest[0], te)][sample] = fields
+            vard['INS:ME'][(chromosome, closest[0], te)][sample] = fields
      
         else:
-            vard['<INS:ME>'][(chromosome, pos, te)] = {sample : fields}
+            vard['INS:ME'][(chromosome, pos, te)] = {sample : fields}
                 
 
     #%% Write combined vcf
@@ -224,7 +227,7 @@ def main():
     
     combined = []
     
-    for var_type in ['<DEL:ME>', '<INS:ME>']:
+    for var_type in ['DEL:ME', 'INS:ME']:
         
         for site in vard[var_type]:
             
@@ -233,6 +236,11 @@ def main():
     
             # Fields 1-5 do not change
             outline = variants[samples[0]][:5]
+            
+            # Only INS:ME in ALT field for insertions, rather than element family,
+            # which SNPeff cannot parse
+            # if var_type == 'INS:ME':
+            #     outline[4] = 1000*'N'
             
             # allele count and frequency
             genotypes = []
@@ -254,9 +262,14 @@ def main():
             ref = ''.join(genotypes_str).count('0')
             AC = ''.join(genotypes_str).count('1')
             
+            # All missing
             if AC + ref == 0:
                 continue
-
+            
+            # Invariant sites
+            if AC == 0 and not args.keep_invariant:
+                continue
+        
             AF = AC / (AC + ref)
             
             INFO = 'MEINFO=%s;AC=%i;AF=%f;NHET=%s' % \
@@ -282,3 +295,114 @@ def main():
         
 if __name__ == '__main__':
     main()
+
+
+
+
+#%% Verworfnes
+# class detettore_vcf:
+    
+#     def __init__(self, vcf_path):
+        
+#         self.TIPs = {}
+#         self.TAPs = {}
+#         self.stats = {}
+        
+#         with gzip.open(vcf_path) as handler:
+            
+#             for line in handler:
+        
+#                 try:
+#                     line = line.decode('utf-8')
+#                 except AttributeError:
+#                     pass
+        
+#                 if line.startswith("#"):
+#                     continue
+
+#                 fields = line.strip().split('\t')
+
+#                 var_type = fields[4][1:7]
+
+#                 chromosome, pos = fields[0], int(fields[1])
+#                 meinfo = re.search(r'MEINFO=(.*?);', fields[7]).group(1)
+#                 te = meinfo.split(',')[0]  
+#                 uniq_id = (chromosome, pos, te)
+                
+#                 imprec = True if 'IMPRECISE' in fields[7] else False
+
+#                 # INFO fields
+#                 info = fields[7].split(';')
+#                 info_d = {}
+#                 for x in info:
+#                     parts = x.split('=')
+#                     info_d[parts[0]] = parts[1] if len(parts) == 2 else 'NA'
+
+#                 # GT fields
+#                 gt = fields[9].split(':')
+#                 gt_d = {
+#                     'GT' : gt[0],
+#                     'GQ' : int(gt[1]),
+#                     'AD_REF' : int(gt[2].split(',')[0]),
+#                     'AD_ALT' : int(gt[2].split(',')[1]),
+#                     'DP' : int(gt[3])
+#                     }
+                
+#                 if var_type == 'INS:ME':
+#                     self.TIPs[uniq_id] = (info_d, gt_d, imprec)
+#                 else:
+#                     self.TAPs[uniq_id] = (info_d, gt_d)
+                    
+  
+    
+# vcf_path = '/home/cristobal/TB/analyses/detettore/tb_1227_v2/vcfs'
+# sample_d = {}
+
+# for subdir, dirs, files in os.walk(vcf_path):
+        
+#         for f in files:
+                   
+#             if f.endswith('.gz'):
+#                 sample = f.split('.')[0]
+#                 sample_d[sample] = detettore_vcf(subdir + '/' + f)
+
+
+
+
+# # Join genotypes
+# vard = { 'INS:ME' : {}, 'DEL:ME' : {} }
+# sample_order = []
+# imprecise = []
+
+# for sample in sample_d:
+    
+#     for uniq_id in sample_d[sample].TIPs:
+        
+#         info = sample_d[sample].TIPs[uniq_id][0]
+#         gt = sample_d[sample].TIPs[uniq_id][1]
+#         imprec = sample_d[sample].TIPs[uniq_id][2]
+        
+        
+#         if imprec:
+                       
+            
+        
+        
+        
+        
+#         if uniq_id not in vard['INS:ME']:
+                
+#                 vard[var_type][uniq_id] = {}
+            
+#             vard[var_type][uniq_id][sample] = fields
+        
+        
+                
+        
+        
+        
+        
+#     for uniq_id in sample_d[sample].TAPs:
+        
+        
+

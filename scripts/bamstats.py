@@ -9,7 +9,7 @@ Get basic bam file statistics:
     - insert size mean
     - insert size standard deviation
 
-Copyright (C) 2018 C. Stritt
+Copyright (C) 2021 C. Stritt
 License: GNU General Public License v3. See LICENSE.txt for details.
 """
 
@@ -27,16 +27,17 @@ def get_args():
     parser = argparse.ArgumentParser(
         description='Get basic coverage and insert size statistics for a bam file.')
 
-    parser.add_argument("bamfile",
-                        help='bwa mem alignment to reference genome.')
+    parser.add_argument('bamfile')
 
     args = parser.parse_args()
     return args
 
 
 def local_cov(region, bamfile):
-    """ Estimates mean coverage and standard deviation in the
-    region chromosome:start-end. Attencion: indexing in pybam is 0-based """
+    """ 
+    Estimates mean coverage and standard deviation in the region 
+    chromosome:start-end. Attencion: indexing in pybam is 0-based 
+    """
 
     chromosome, start, end = region
     pybam = pysam.AlignmentFile(bamfile, "rb")
@@ -52,10 +53,7 @@ def local_cov(region, bamfile):
 
     coverage = []
     for i in range(start, end):
-        try:
-            c = depth[i]
-        except KeyError:
-            c = 0
+        c = depth[i] if i in depth else 0
         coverage.append(c)
 
     if len(coverage) > 1:
@@ -71,67 +69,15 @@ def local_cov(region, bamfile):
     return mean, stdev
 
 
-def local_cov_filt(region, bamfile, filters):
-
-    """ Estimate mean coverage and standard deviation in the region of
-    interest. Filters for base and mapping quality are applied
-    """
-    chromosome, start, end = region
-    baseq, mapq = filters
-
-    pybam = pysam.AlignmentFile(bamfile, "rb")
-    cov_dict = {}
-
-    crap_reads = set()
-
-    for pileupcolumn in pybam.pileup(chromosome, start, end,
-                                     **{"truncate": True}):
-        pos = pileupcolumn.pos
-        cov_dict[pos] = 0
-
-        for pileupread in pileupcolumn.pileups:
-
-            read = pileupread.alignment
-
-            read_id = read.query_name
-            if read_id in crap_reads:
-                continue
-
-            if pileupread.is_del or pileupread.is_refskip or\
-                not read.is_proper_pair or read.mapping_quality < mapq:
-
-                crap_reads.add(read_id)
-                continue
-
-            if read.query_qualities[pileupread.query_position] < baseq:
-                continue
-
-            cov_dict[pos] += 1
-
-    coverage = []
-    for i in range(start, end):
-        try:
-            c = cov_dict[i]
-        except KeyError:
-            c = 0
-        coverage.append(c)
-
-    if len(coverage) > 1:
-        mean = int(statistics.mean(coverage))
-        stdev = int(statistics.stdev(coverage))
-    else:
-        mean = int(coverage[0])
-        stdev = 'NA'
-
-    return mean, stdev
-
-
 def core_dist_stats(dist):
     """
     Get the core of a distributions and calculate its moments. The core
     rather than the full distribution is used in order to mitigate the
     influence if coverage and insert size outliers in the bam file.
     """
+
+    # Overall mean (for comparison...)
+    mean_tutto = int(statistics.mean(dist))
 
     # Median absolute deviation
     median = statistics.median(dist)
@@ -146,7 +92,8 @@ def core_dist_stats(dist):
 
     mean = int(statistics.mean(core_dist))
     stdev = int(statistics.stdev(core_dist))
-    return mean, stdev
+    
+    return mean_tutto, mean, stdev
 
 
 def coverage_stats(bamfile):
@@ -154,10 +101,7 @@ def coverage_stats(bamfile):
     Create list with coverage at every single position. If the list is longer than
     1e6, use random sample to estimate coverage statistics.
 
-    To do: only use first chromosome, traverse bam only once for coverage and isize stats
-    count_coverage function.
-
-    Better: only use 1e6 bp
+    Only traverses the first chromosome if there are multiple.
 
     """
 
@@ -168,17 +112,21 @@ def coverage_stats(bamfile):
     pybam.close()
 
     if len(cov) < 1e6:
-        stats = core_dist_stats(cov)
+        mean, mean_cd, stdev_cd = core_dist_stats(cov)
     else:
-        stats = core_dist_stats(random.sample(cov, int(1e6)))
-    return stats
+        mean, mean_cd, stdev_cd = core_dist_stats(random.sample(cov, int(1e6)))
+        
+    return {
+        'cov_mean' : mean,
+        'cov_mean_cd' : mean_cd,
+        'cov_stdev_cd' : stdev_cd
+        }
 
 
-def isize_stats(bamfile):
+def length_stats(bamfile):
     """
     Get insert sizes of properly paired reads, calculate mean and standard
-    deviation of the core distribution. Using the core distribution instead of
-    all data mitigates the influence of outliers (source: Piccard toolbox).
+    deviation of the core distribution. 
 
     A second traversal of the bam file is required because here reads are traversed rather
     than positions, as in the coverage_stats function.
@@ -199,57 +147,104 @@ def isize_stats(bamfile):
             isizes.append(abs(read.isize))
 
     pybam.close()
-
-    if not isizes:
-        sys.exit("\nERROR: No properly paired reads, check your bam file!")
+    
+    # Readlengths    
+    readlengths = [x for x in readlengths if x]
+    
+    read_d = {
+        'readlength_max' : max(readlengths),
+        'readlength_mean' : int(statistics.mean(readlengths)),
+        'readlength_stdev' : int(statistics.stdev(readlengths))
+        } 
         
+    if not isizes:
+        return read_d
+        
+    # Insert sizes
     if len(isizes) < 1e6:
-        stats = core_dist_stats(isizes)
+        mean, mean_cd, stdev_cd = core_dist_stats(isizes)
     else:
-        stats = core_dist_stats(random.sample(isizes, int(1e6)))
+        mean, mean_cd, stdev_cd = core_dist_stats(random.sample(isizes, int(1e6)))
+        
+    isize_d = {
+        'isize_mean' : mean,
+        'isize_mean_cd' : mean_cd,
+        'isize_stdev_cd' : stdev_cd
+        }    
+    
+    return read_d, isize_d
 
-    return stats, max([x for x in readlengths if x])
 
+def return_dict(bamfile):
+    """
+    Returns dictionary used  by detettore. Coverage stats disabled, as 
+    they require second traversal of bam file.
+    
+    """
 
-def write_output(bamfile, outfmt):
-
-    # cov_mean, cov_stdev = coverage_stats(bamfile)
-    isize, readlength = isize_stats(bamfile)
-
-    outlist = [
-        'readlength\t' + str(readlength),
-        #'coverage_mean\t' + str(cov_mean),
-        #'coverage_stdev\t' + str(cov_stdev),
-        'isize_mean\t' + str(isize[0]),
-        'isize_stdev\t' + str(isize[1])
-        ]
-
-    if outfmt == 'file':
-        basename = bamfile.split('/')[-1].split('.')[0]
-        outfile = basename + '_bamstats.txt'
-        with open(outfile, 'w') as f:
-
-            for line in outlist:
-                print(line)
-                f.write(line + '\n')
-        return outfile
-
-    elif outfmt == 'dict':
-
-        return {
-            'readlength' : readlength,
-            #'coverage_mean' : cov_mean,
-            #'coverage_stdev' : cov_stdev,
-            'isize_mean' : isize[0],
-            'isize_stdev' : isize[1]
+    length_statistiks = length_stats(bamfile)
+    
+    # No paired end reads
+    if isinstance(length_statistiks, dict):
+        
+        return { 
+            'readlength' : length_statistiks['readlength_max']
             }
-
-
+         
+    else:
+        read_d, isize_d = length_statistiks
+    
+        return {
+            'readlength' : read_d['readlength_mean'],
+            'isize_mean' : isize_d['isize_mean_cd'],
+            'isize_stdev' : isize_d['isize_stdev_cd']
+            }
+    
+    
 def main():
-
+    """
+    Write to stdout:
+        
+    cov_mean, cov_mean_cd, cov_stdev_cd, readlength, PE/SE, isize_mean, isize_stdev
+    
+    """
+    
     args = get_args()
-    bamfile = args.bamfile
-    write_output(bamfile)
-
+    
+    cov_d = coverage_stats(args.bamfile)
+    length_statistiks = length_stats(args.bamfile)
+    
+    if isinstance(length_statistiks, dict):
+        rtype = 'SE'
+        read_d = length_statistiks
+        isize_d = {
+            'isize_mean_cd' : 'NA',
+            'isize_stdev_cd' : 'NA'
+            }
+        
+    else:
+        rtype = 'PE'
+        read_d, isize_d = length_statistiks
+        
+    outline = map( str, [
+        cov_d['cov_mean'], 
+        cov_d['cov_mean_cd'], 
+        cov_d['cov_stdev_cd'], 
+        read_d['readlength_max'],
+        read_d['readlength_mean'],
+        read_d['readlength_stdev'],
+        rtype, 
+        isize_d['isize_mean_cd'],
+        isize_d['isize_stdev_cd']
+        ] )
+    
+    
+    sys.stdout.write('\t'.join([
+        'cov_mean', 'cov_mean_cd', 'cov_stdev_cd', 'readlength_max', 
+        'readlength_mean', 'readlength_stdev', 'read_type', 'isize_mean_cd', 'isize_stdev_cd']) +'\n')
+    sys.stdout.write('\t'.join(outline)+'\n')
+    
+    
 if __name__ == '__main__':
     main()
+

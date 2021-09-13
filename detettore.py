@@ -8,6 +8,10 @@ License: GNU General Public License v3. See LICENSE.txt for details.
 
 FACIENDA:
     - check DP and GT assignement for TAPs
+    - run TIP splitreads only if reads are not paired-end
+    
+    - write bamstats to vcf (including median coverage), for later filtering vcfs
+    
 
 """
 
@@ -150,8 +154,9 @@ def main():
               (len(DR_anchors), len(splitreads)))
 
         # Discordant read pairs: find anchor clusters with mates mapping to TEs
-        tips.discordant_read_pairs(parameters, DR_anchors)
-        print(str(len(tips.DR_clusters)) + ' clusters')
+        if parameters.paired_end:
+            tips.discordant_read_pairs(parameters, DR_anchors)
+            print(str(len(tips.DR_clusters)) + ' clusters')
 
         # Same for splitreads
         tips.splitreads(parameters, splitreads, split_positions)
@@ -167,7 +172,7 @@ def main():
 
 
     #%% TAPs
-    if "taps" in parameters.modus:
+    if "taps" in parameters.modus and parameters.paired_end:
 
         print('\n\nSEARCHING TE ABSENCE POLYMORPHISMS')
         print('\nExtracting read pairs around annotated TEs ...')
@@ -180,17 +185,14 @@ def main():
 
     #%% Write VCF, stats, and log file
 
-    if "tips" in parameters.modus and "taps" in parameters.modus:
-
+    if "tips" in parameters.modus and "taps" in parameters.modus and parameters.paired_end:
         combined_vcf = tips_vcf + taps_vcf
         combined_vcf = sorted(combined_vcf, key=lambda x: (x[0], int(x[1])))
 
     elif "tips" in parameters.modus:
-
         combined_vcf = tips_vcf
 
-    elif "taps" in parameters.modus:
-
+    elif "taps" in parameters.modus and parameters.paired_end:
         combined_vcf = taps_vcf
 
 
@@ -247,13 +249,12 @@ def main():
             'TIPs summary:\n0/1:%i\n1/1:%i\n' % (tips_stats['0/1'], tips_stats['1/1'])
             )
 
-    if 'taps' in parameters.modus:
+    if 'taps' in parameters.modus and parameters.paired_end:
         print(
             'TAPs summary:\n0/0:%i\n0/1:%i\n1/1:%i\n./.:%i\n' % (taps_stats['0/0'],taps_stats['0/1'], taps_stats['1/1'], taps_stats['./.'])
             )
 
     # with open(args.outname + '.stats.tsv', 'w') as f:
-
 
     # Create log file
     logging.basicConfig(
@@ -263,7 +264,7 @@ def main():
             level = logging.DEBUG)
 
     log = logging.getLogger(args.outname +'.log')
-
+    
     log.info('readlength: %i, isize_mean: %i, isize_stdev: %i' % (
         parameters.readlength, parameters.isize_mean, parameters.isize_stdev))
 
