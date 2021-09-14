@@ -562,7 +562,7 @@ class TIPs:
             FORMAT = 'GT:GQ:AD:DP:PL'
  
             PL = [ int(x) if not math.isinf(x) else x for x in genotype[2] ]
-            GT = '%s:%i:%s:%i:%s' % (genotype[0], genotype[1], AD, DP, ','.join(PL))
+            GT = '%s:%i:%s:%i:%s' % (genotype[0], genotype[1], AD, DP, ','.join([str(x) for x in PL]))
             
             outline = [CHROM, POS, '.', REF, ALT, '.', 'PASS', INFO, FORMAT, GT]
             
