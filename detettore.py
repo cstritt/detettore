@@ -195,7 +195,6 @@ def main():
     elif "taps" in parameters.modus and parameters.paired_end:
         combined_vcf = taps_vcf
 
-
     date = time.strftime("%d/%m/%Y")
 
     metainfo = [
@@ -269,7 +268,6 @@ def main():
         parameters.readlength, parameters.isize_mean, parameters.isize_stdev))
 
     log.info(args)
-
 
     # Clean up
     if not args.keep:

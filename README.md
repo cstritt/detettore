@@ -27,8 +27,6 @@ June 2021
 5. [License](#license)
 
 
-
-
 ## <a name="install"></a>Installation
 *detettore* is written in Python 3 and available on PyPI. To avoid conflicts
 with dependencies, it is best to install it in a virtual environment:
@@ -150,9 +148,6 @@ parallel -j10 < run_detettore.cmds 2> err.log > stdout.log
 ```
 
 ### <a name="combineVCFs"></a>Combine VCFs
-
-
-
 
 
 

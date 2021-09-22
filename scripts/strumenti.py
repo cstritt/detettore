@@ -335,7 +335,6 @@ class TIPs:
             POS = site[1]
             REF = parameters.ref_contigs[CHROM][POS - 1]
             
-
             discordant = site[2]
             split = site[3]
             
@@ -558,10 +557,10 @@ class TIPs:
                 INFO = 'MEINFO=%s;SVTYPE=INS;HOMSEQ=%s;HOMLEN=%i;DPADJ=%i;DR=%i;SR=%i;AL=%i;IMPRECISE;CIPOS=%i,%i;AP=%f;BPIQR=%i' \
                     % (MEINFO, TSD, TSDLEN, DPADJ, DR, SR, AL, CI_lower, CI_upper, round(PROP, 2), IQR)
 
-
             FORMAT = 'GT:GQ:AD:DP:PL'
- 
-            PL = [ int(x) if not math.isinf(x) else x for x in genotype[2] ]
+            
+            # Max GT likelihood of 1e6 (to avoid inf values)
+            PL = [ str(int(x)) if not math.isinf(x) else '1e6' for x in genotype[2] ]
             GT = '%s:%i:%s:%i:%s' % (genotype[0], genotype[1], AD, DP, ','.join(PL))
             
             outline = [CHROM, POS, '.', REF, ALT, '.', 'PASS', INFO, FORMAT, GT]
@@ -788,8 +787,7 @@ class TAPs:
                             
             else:
                 inputs.append((te, parameters))
-                
-                
+        
         with mp.Pool(parameters.cpus) as pool:
             self.candidates = pool.map(self.process_tap, inputs)
             
@@ -1133,7 +1131,9 @@ def extract_deviant_reads(te,  region, parameters):
         Returns a dictionary d[read name] = [isize, AlignedSegment objects]
         
         IMPROVE: 
-            Only look up reads until start position of TE
+            - only look up reads until start position of TE
+            - alternative strategy for SE reads: count hard clipped reads as 
+            evidence for a TAP?
 
         """
         
