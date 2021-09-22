@@ -1,202 +1,162 @@
+[![GitHub Downloads](https://img.shields.io/github/downloads/cstritt/detettore/total.svg?style=social&logo=github&label=Download)](https://github.com/cstritt/detettore/releases)
+
+
 *detettore* – a program to detect transposable element polymorphisms
-================
-April 2020
+====================================================================
+June 2021
 
-![](detettore_ad.png)
+<img src="detettore_ad.png" alt="drawing" width="600"/>  
 
-*Detettore* is a program to detect and characterize transposable element
-(TE) polymorphisms using reference-aligned paired-end reads.
-
-The program searches for:
+\
+*detettore* uses reference-aligned paired-end reads to search for:
 
   - **TE insertion polymorphisms (TIPs)**, i.e. TEs absent in the
     reference genome but present in a sequenced individual
   - **TE absence polymorphisms (TAPs)**, i.e. TEs present in the
     reference but absent in a sequenced individual
 
-## Requirements
 
-BLAST+ is the only external dependency
-(<https://blast.ncbi.nlm.nih.gov>).
+## Table of Contents
+1. [Installation](#install)
+2. [Usage](#usage)
+  1. [Single sample](#single)
+  2. [Multiple samples](#multiple)
+  3. [Combine VCF files](#combineVCFs)
+3. [TE toolbox](#tools)
+4. [New in version 2](#version)
+5. [License](#license)
 
-**Minimal data requirements**
 
-  - Illumina paired-end reads aligned to a reference genome with BWA-MEM
-    (Li 2013)  
-  - TE consensus sequences  
-  - reference genome  
-  - TE annotation in bed or gff (only required for TAPs)
-
-**Note on the paired-end reads**  
-It is assumed that the paired-end reads were aligned to a reference
-genome with BWA-MEM (Li 2013). The reason for this restriction is that
-different aligners use different ways to indicate whether a read maps
-uniquely to the reference or at multiple places.
-
-## Download and install *detettore*
-
-Download the *detettore* directory from Github.
+## <a name="install"></a>Installation
+*detettore* is written in Python 3 and available on PyPI. To avoid conflicts
+with dependencies, it is best to install it in a virtual environment:
 
 ``` bash
-git clone https://github.com/cstritt/detettore
-```
-
-It is most convenient to install *detettore* in a Python virtual
-environment. Here are two ways to set up a virtual environment.
-
-``` bash
-# When using the Anaconda distribution
+# Create environment called detettore
 conda create -n detettore python=3.7
 
-# Without Anaconda, replacing <location> with the path to the environment
-virtualenv -p python3.7 <location>
-```
-
-Finally, activate the environment and install *detettore*.
-
-``` bash
-# With Anaconda
-conda activate detettore
-
-# Without
-source <location>/bin/activate    
+# Activate environment
+source activate detettore
 
 # Install detettore
-cd ~/programs/detettore
-python setup.py install
+pip install detettore
+
+```
+Or when not using Anaconda:
+``` bash
+# Create environment, where <location> is the path to the environment
+virtualenv -p python3.7 <location>
+
+# Activate environment
+source <location>/bin/activate
+
+# Install detettore
+pip install detettore
+
 ```
 
-## Usage
-
-#### Command line parameters of detettore.py
-
-| Parameter     | Explanation                                                                                                                                                                 |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| \-o           | Output folder name, e.g. the sample ID                                                                                                                                      |
-| \-b           | Unfiltered (\!) bam file, i.e. including the not uniquely-mapping reads                                                                                                     |
-| \-m           | The module to run. Can be both at the same time or just one \[tips, taps\]                                                                                                  |
-| \-t           | TE consensus sequences in fasta format                                                                                                                                      |
-| \-r           | Reference genome in fasta format                                                                                                                                            |
-| \-a           | TE annotation in bed or gff format                                                                                                                                          |
-| \-u           | Minimum difference between primary and secondary alignment score. Reads above the threshold are considered as mapping uniquely to the reference \[30\]                      |
-| \-lSR         | Minimum length of soft-clipped read parts \[15\]                                                                                                                            |
-| \-lDR         | Minimum alignment length of discordant read-pair target hits \[50\]      
-| \-id          | Minimum sequence identity between reads and TE consensus sequences \[80\]                                                                                                   |
-| \-ws          | Word size (minimum length of best perfect match) for blasting splitreads against TEs \[11\]                                                                                 |
-| \-c           | Number of CPUs. The blast search can be run with multiple CPUs, as well as a time-consuming loop in the TAP module \[1\]                                                    |
-| \-keep        | Keep fasta files with discordant read and clipped sequences, as well as the output of the blast search of theses seqences against the TE consensus sequences                |
-| \-reconstruct | If the TAP module is used, TE sequences present in the reference and the sequenced individual can be reconstructed and written to a fasta file. Slow for large annotations. |
-
-**Naming conventions**  
-If a gff file is used in the TAP module, the TE name in the last column
-of the gff is assumed to be formatted as “Name=TE\_name”. If not the case, the regex search will throw an AttributeError.
-
-## Structure of output files
-
-*Detettore* provides a wealth of information for TIP candidates. Besides
-the number of supporting discordant and split reads, the number of
-bridge reads are reported, that is, the number of reads spanning the
-insertion breakpoint and thus indicating heterozygosity or a false
-positive. Furthermore, for each candidate the regional coverage is
-shown, which allows to filter out repetitive and low-confidence
-regions.
-
-#### tips.tsv
-
-| Header                 | Explanation                                                                                                                       |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| chromosome             |                                                                                                                                   |
-| position               |                                                                                                                                   |
-| TE                     |                                                                                                                                   |
-| strand                 |                                                                                                                                   |
-| nr\_supporting\_reads  | Total number of supporting reads. Evidence from the 5’ and the 3’ site is separated with a dash.                                  |
-| nr\_discordant\_reads  |                                                                                                                                   |
-| nr\_splitreads         |                                                                                                                                   |
-| nr\_aligned\_positions | Nr of positions in the TE consensus sequence that are covered by the discordant reads and split reads reaching into the insertion |
-| TSD                    | Target site duplication sequence                                                                                                  |
-| nr\_bridge\_reads      | Number of reads which bridge the insertion breakpoint and point to heterozygous insertions or false positives                     |
-| region\_start          | Coordinates of the region surrounding the TE insertion                                                                            |
-| region\_end            |                                                                                                                                   |
-| region\_cov\_mean      | Mean coverage in this region. Useful indicator of messiness and a good filtering criterion.                                       |
-| region\_cov\_stdev     |                                                                                                                                   |
-
-#### taps.tsv
-
-| Header             | Explanation                                              |
-| ------------------ | -------------------------------------------------------- |
-| chromosome         |                                                          |
-| TE\_start          | Start of the reference TE insertion                      |
-| TE\_end            | End of the reference TE insertion                        |
-| TE\_id             | ID of the reference TE                                   |
-| TE\_length         | Length of the reference TE                               |
-| isize              | Mean insert size of the deviant read-pairs around the TE |
-| nr\_discordant     | Nr of deviant read-pairs                                 |
-| absence\_start     | Beginning of the gap                                     |
-| absence\_end       | End of the gap                                           |
-| region\_start      | Same as for TIPs                                         |
-| region\_end        |                                                          |
-| region\_cov\_mean  |                                                          |
-| region\_cov\_stdev |                                                          |
+## <a name="usage"></a>Usage
 
 
-## Making sense of the output
+### <a name="single"></a>Single sample
+Basic usage illustrated with the data in the example folder.
 
-Here two possible applications of *detettore* are shown.
+``` bash
+detettore.py \
+  -b example/reads.bam \
+  -r example/reference.fasta \
+  -a example/TE_annotation.gff \
+  -t example/TE_consensusLib.fasta \
+  -o example \
+  -m tips taps \
+  --require_split \
+  --include_invariant
 
-1)  In the first, we have a have a candidate gene and want to know
-    whether it contains TE insertion polymorphisms.  
-2)  In the second, individual output files are pooled into a vcf file to
-    study the variation a particular family generated in a natural
-    population.
-
-#### 1\. Search TIPs in and around a candidate region
-
-``` r
-# Define some candidate genes
-candidate_genes <- list(
-  'Bradi1g77130' = c('Bd1', 73734763,   73736724),
-  'Bradi4g09872' = c('Bd4', 9394780,    9398745),
-  'Bradi5g01366' = c('Bd5', 1292944,    1297431)
-  )
-
-# Load TIPs
-tip_files <- list.files('~/github/detettore/example/tips', full.names = T, recursive = T, pattern="tips", include.dirs = T)
-
-tips <- data.frame()
-
-for (f in tip_files){
-
-  t <- read.table(f, header=T)
-
-  # Add accession name to table
-  acc <- strsplit(f, split = "/")[[1]][8]
-  t$acc <- as.factor(rep(acc, nrow(t)))
-
-  tips <- rbind(tips, t)
-}
-
-# TIPs in and around (+/- 1000 bp) candiate genes
-candidate_tips <- list()
-
-for (gene in names(candidate_genes)){
-
-  chr = candidate_genes[[gene]][1]
-
-  # Add 1000 base pairs to gene coordinates to detect close TIPs
-  start = as.numeric(candidate_genes[[gene]][2]) - 1000
-  end = as.numeric(candidate_genes[[gene]][3]) + 1000
-  candidate_tips[[gene]] = subset(tips, chromosome == chr & position %in% c(start:end))
-}
-
-# Show results
-candidate_tips
-candidate_tips$Bradi1g77130
 ```
 
-#### 2\. Combining variants into a vcf file
+#### Explanation of command line parameters
 
-*The variantCaller.py program is currently being updated.*
+| Parameter               | Explanation
+|-                        |-
+|**Input/Output**         |
+|\-b                      | bam file with reference-aligned paired-end reads.
+|\-r                      | Reference genome in fasta format.
+|\-t                      | TE consensus sequences in fasta format.
+|\-a                      | TE annotation in bed or gff format.
+|\-o                      | Sample name, used as a prefix for output files.
+|**Program settings**     |
+|\-m                      | The module to run (tips, taps, or both, as above).
+|\-c                      | Number of CPUs.
+|\--region                | Restrict search to region chromosome:start:end.
+|\--include_invariant     | Include conserved TEs in vcf output.
+|\--require_split         | Discard variant candidates if no splitread evidence is present.
+|\--keep                  | Keep intermediate files.
+|**Thresholds**           |         
+|\-q                      | Minimum mapping quality of reference-aligned anchor reads.
+|\-lDR                    | Minimum alignment length for discordant read-pair mtarget hits. [50]
+|\-lSR                    | Minimum alignment length for splitread target hits. [20]
 
-# License
 
+Points to consider:
+  - **Chromosome names** must be consistent in the different files, which can be a problem when files are downloaded from different sources.
+  - The bam file should be as **unfiltered** as possible: files containing only properly paired or uniquely mapping reads, while useful for SNP calling, lack the information tapped by *detettore*.
+
+
+#### Output
+The command above will produce a file called example.vcf.gz containing TIPs and TAPs,
+and a log file example.log. If --keep was set, a folder sample_tmp will also be present,
+containing ...
+
+
+### <a name="multiple"></a>Multiple samples
+Here is an example workflow to call TE polymorphisms on multiple samples.
+GNU parallel is used to run 10 samples in parallel, with one CPU per sample.
+A different approach might be required on computing clusters with job queing.
+
+
+``` bash
+# Set input files which do not change for different samples
+ref=/path/to/reference.fasta
+annot=/path/to/TE_annotation.gff
+telib=/path/to/TE_consensus.fasta
+
+# Create a list of detettore commands, looping through a list containg paths to bam files.
+# The files are assumed to be named sample.bam
+while read bampath;
+do
+
+  sample=$(basename $bampath | cut -d'.' -f1)
+
+  echo "\
+  detettore.py \
+    -b $bampath \
+    -r $ref \
+    -a $annot \
+    -t $telib \
+    -o $sample \
+    -m tips taps \
+    -c 1 \
+    --require_split \
+    --include_invariant"\
+  >> run_detettore.cmds
+
+done < paths_to_bam.txt
+
+# Use GNU parallel to run 10 commands simultaneously. Save stderr and stdout to log files.
+parallel -j10 < run_detettore.cmds 2> err.log > stdout.log
+
+```
+
+### <a name="combineVCFs"></a>Combine VCFs
+
+
+
+## <a name="version"></a>**New in version 2**
+- all output in vcf format
+- output invariant sites
+- genotype calling based on genotype likelihoods
+- compatibility with minimap2
+- tools for downstream analysis
+
+## <a name="licence"></a>Licence
 GNU General Public License v3. See LICENSE.txt for details.

@@ -1,0 +1,63 @@
+MTB_anc	ISEScan	insertion_sequence	1	1889	.	+	.	ID=MTB_anc_IS_1;family=IS21;cluster=IS21_259
+MTB_anc	ISEScan	insertion_sequence	702016	703199	.	+	.	ID=MTB_anc_IS_2;family=IS200/IS605;cluster=IS200/IS605_138
+MTB_anc	ISEScan	insertion_sequence	832352	832857	.	+	.	ID=MTB_anc_IS_3;family=ISL3;cluster=ISL3_143|ISL3||protein:plasmid:23974
+MTB_anc	ISEScan	insertion_sequence	889022	890374	.		.	ID=MTB_anc_IS_4;family=IS3;cluster=IS3_168
+MTB_anc	ISEScan	insertion_sequence	1025437	1026914	.	-	.	ID=MTB_anc_IS_5;family=IS256;cluster=IS256_47
+MTB_anc	ISEScan	insertion_sequence	1027104	1029092	.	+	.	ID=MTB_anc_IS_6;family=IS200/IS605;cluster=IS200/IS605_96
+MTB_anc	ISEScan	insertion_sequence	1158953	1159916	.	-	.	ID=MTB_anc_IS_7;family=ISNCY;cluster=ISNCY_85
+MTB_anc	ISEScan	insertion_sequence	1159755	1160319	.	-	.	ID=MTB_anc_IS_8;family=ISNCY;cluster=ISNCY_85
+MTB_anc	ISEScan	insertion_sequence	1164200	1165518	.		.	ID=MTB_anc_IS_9;family=IS5;cluster=IS5_279
+MTB_anc	ISEScan	insertion_sequence	1169306	1170724	.		.	ID=MTB_anc_IS_10;family=IS256;cluster=IS256_128
+MTB_anc	ISEScan	insertion_sequence	1275247	1276075	.	+	.	ID=MTB_anc_IS_11;family=IS701;cluster=IS701_304|IS701||protein:plasmid:141844
+MTB_anc	ISEScan	insertion_sequence	1277843	1278820	.	+	.	ID=MTB_anc_IS_12;family=IS5;cluster=IS5_279
+MTB_anc	ISEScan	insertion_sequence	1341304	1342722	.	-	.	ID=MTB_anc_IS_13;family=IS256;cluster=IS256_128
+MTB_anc	ISEScan	insertion_sequence	1468167	1469616	.	-	.	ID=MTB_anc_IS_14;family=ISL3;cluster=ISL3_143|ISL3||protein:plasmid:23974
+MTB_anc	ISEScan	insertion_sequence	1541953	1543305	.	-	.	ID=MTB_anc_IS_15;family=IS3;cluster=IS3_168
+MTB_anc	ISEScan	insertion_sequence	1987707	1989053	.		.	ID=MTB_anc_IS_16;family=IS3;cluster=IS3_168
+MTB_anc	ISEScan	insertion_sequence	1996102	1997454	.	+	.	ID=MTB_anc_IS_17;family=IS3;cluster=IS3_168
+MTB_anc	ISEScan	insertion_sequence	1998229	1999585	.	-	.	ID=MTB_anc_IS_18;family=IS3;cluster=IS3_168
+MTB_anc	ISEScan	insertion_sequence	2260564	2261836	.	+	.	ID=MTB_anc_IS_19;family=IS110;cluster=IS110_153
+MTB_anc	ISEScan	insertion_sequence	2343090	2346330	.	+	.	ID=MTB_anc_IS_20;family=IS3;cluster=IS3_168
+MTB_anc	ISEScan	insertion_sequence	2365415	2366767	.		.	ID=MTB_anc_IS_21;family=IS3;cluster=IS3_168
+MTB_anc	ISEScan	insertion_sequence	2430120	2431468	.	-	.	ID=MTB_anc_IS_22;family=IS3;cluster=IS3_168
+MTB_anc	ISEScan	insertion_sequence	2439145	2440328	.	-	.	ID=MTB_anc_IS_23;family=IS110;cluster=IS110_284
+MTB_anc	ISEScan	insertion_sequence	2550018	2551364	.	+	.	ID=MTB_anc_IS_24;family=IS3;cluster=IS3_168
+MTB_anc	ISEScan	insertion_sequence	2635578	2636930	.	+	.	ID=MTB_anc_IS_25;family=IS3;cluster=IS3_168
+MTB_anc	ISEScan	insertion_sequence	2720520	2721738	.	-	.	ID=MTB_anc_IS_26;family=IS110;cluster=IS110_284
+MTB_anc	ISEScan	insertion_sequence	2784618	2785966	.		.	ID=MTB_anc_IS_27;family=IS3;cluster=IS3_168
+MTB_anc	ISEScan	insertion_sequence	2828502	2829920	.	-	.	ID=MTB_anc_IS_28;family=IS256;cluster=IS256_128
+MTB_anc	ISEScan	insertion_sequence	2972110	2973462	.		.	ID=MTB_anc_IS_29;family=IS3;cluster=IS3_168
+MTB_anc	ISEScan	insertion_sequence	2982720	2984080	.	+	.	ID=MTB_anc_IS_30;family=IS256;cluster=IS256_128
+MTB_anc	ISEScan	insertion_sequence	3100195	3102162	.	-	.	ID=MTB_anc_IS_31;family=IS200/IS605;cluster=IS200/IS605_96
+MTB_anc	ISEScan	insertion_sequence	3112633	3114861	.	+	.	ID=MTB_anc_IS_32;family=ISNCY;cluster=ISNCY_54
+MTB_anc	ISEScan	insertion_sequence	3115409	3116406	.	-	.	ID=MTB_anc_IS_33;family=ISL3;cluster=ISL3_119|ISL3||protein:plasmid:158024
+MTB_anc	ISEScan	insertion_sequence	3116501	3119073	.	+	.	ID=MTB_anc_IS_34;family=IS481;cluster=IS481_77|IS481||protein:plasmid:142246
+MTB_anc	ISEScan	insertion_sequence	3120525	3121877	.	-	.	ID=MTB_anc_IS_35;family=IS3;cluster=IS3_168
+MTB_anc	ISEScan	insertion_sequence	3194166	3196132	.	-	.	ID=MTB_anc_IS_36;family=IS200/IS605;cluster=IS200/IS605_96
+MTB_anc	ISEScan	insertion_sequence	3288366	3290578	.	+	.	ID=MTB_anc_IS_37;family=IS21;cluster=IS21_146
+MTB_anc	ISEScan	insertion_sequence	3312735	3314112	.	+	.	ID=MTB_anc_IS_38;family=ISNCY;cluster=ISNCY_85
+MTB_anc	ISEScan	insertion_sequence	3332071	3335748	.	-	.	ID=MTB_anc_IS_39;family=IS200/IS605;cluster=IS200/IS605_96
+MTB_anc	ISEScan	insertion_sequence	3381321	3382739	.		.	ID=MTB_anc_IS_40;family=IS256;cluster=IS256_128
+MTB_anc	ISEScan	insertion_sequence	3481334	3482752	.		.	ID=MTB_anc_IS_41;family=IS256;cluster=IS256_128
+MTB_anc	ISEScan	insertion_sequence	3493133	3494486	.	-	.	ID=MTB_anc_IS_42;family=ISNCY;cluster=ISNCY_54
+MTB_anc	ISEScan	insertion_sequence	3548545	3550188	.	-	.	ID=MTB_anc_IS_43;family=IS21;cluster=IS21_62
+MTB_anc	ISEScan	insertion_sequence	3551232	3552582	.	+	.	ID=MTB_anc_IS_44;family=IS3;cluster=IS3_168
+MTB_anc	ISEScan	insertion_sequence	3552714	3554066	.	+	.	ID=MTB_anc_IS_45;family=IS3;cluster=IS3_168
+MTB_anc	ISEScan	insertion_sequence	3557262	3558651	.	-	.	ID=MTB_anc_IS_46;family=IS30;cluster=IS30_173
+MTB_anc	ISEScan	insertion_sequence	3710383	3711735	.	+	.	ID=MTB_anc_IS_47;family=IS3;cluster=IS3_168
+MTB_anc	ISEScan	insertion_sequence	3711815	3713897	.	+	.	ID=MTB_anc_IS_48;family=IS110;cluster=IS110_140
+MTB_anc	ISEScan	insertion_sequence	3753348	3754353	.		.	ID=MTB_anc_IS_49;family=IS110;cluster=IS110_103|IS110||protein:plasmid:145871
+MTB_anc	ISEScan	insertion_sequence	3754570	3755811	.	-	.	ID=MTB_anc_IS_50;family=ISL3;cluster=ISL3_119|ISL3||protein:plasmid:158024
+MTB_anc	ISEScan	insertion_sequence	3795060	3796410	.	-	.	ID=MTB_anc_IS_51;family=IS3;cluster=IS3_168
+MTB_anc	ISEScan	insertion_sequence	3799987	3801554	.	+	.	ID=MTB_anc_IS_52;family=ISNCY;cluster=ISNCY_85
+MTB_anc	ISEScan	insertion_sequence	3843791	3846400	.	-	.	ID=MTB_anc_IS_53;family=IS21;cluster=IS21_35
+MTB_anc	ISEScan	insertion_sequence	3847791	3848773	.	-	.	ID=MTB_anc_IS_54;family=IS3;cluster=IS3_232
+MTB_anc	ISEScan	insertion_sequence	3848948	3850469	.	-	.	ID=MTB_anc_IS_55;family=IS256;cluster=IS256_128
+MTB_anc	ISEScan	insertion_sequence	3890782	3892130	.	+	.	ID=MTB_anc_IS_56;family=IS3;cluster=IS3_168
+MTB_anc	ISEScan	insertion_sequence	3965313	3965746	.	+	.	ID=MTB_anc_IS_57;family=IS21;cluster=IS21_31|IS21||protein:plasmid:23945
+MTB_anc	ISEScan	insertion_sequence	4075666	4077783	.	+	.	ID=MTB_anc_IS_58;family=IS21;cluster=IS21_146
+MTB_anc	ISEScan	insertion_sequence	4078463	4079878	.	-	.	ID=MTB_anc_IS_59;family=IS256;cluster=IS256_128
+MTB_anc	ISEScan	insertion_sequence	4215556	4216540	.	-	.	ID=MTB_anc_IS_60;family=IS481;cluster=IS481_77|IS481||protein:plasmid:142246
+MTB_anc	ISEScan	insertion_sequence	4252882	4254331	.	+	.	ID=MTB_anc_IS_61;family=ISL3;cluster=ISL3_143|ISL3||protein:plasmid:23974
+MTB_anc	ISEScan	insertion_sequence	4301563	4303367	.	-	.	ID=MTB_anc_IS_62;family=IS200/IS605;cluster=IS200/IS605_96
+MTB_anc	ISEScan	insertion_sequence	4318358	4319635	.	+	.	ID=MTB_anc_IS_63;family=IS110;cluster=IS110_103|IS110||protein:plasmid:145871

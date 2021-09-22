@@ -1,13 +1,8 @@
 .spyproject
-build
-*.egg-info
-dist
 tools
-facienda.md
-README_v1.md
-troubleshooting.txt
 scripts/__pycache__
 detettore.step-by-step.Rmd
-variantcaller2.py
 testing
+scripts/TE_consensus.py
+benchmark
 load_test_params.py
