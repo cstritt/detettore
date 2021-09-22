@@ -3,7 +3,15 @@
 
 *detettore* – a program to detect transposable element polymorphisms
 ====================================================================
-June 2021
+September 2021
+
+Version 2.0 beta  
+New in version 2:
+- all output in vcf format
+- output of invariant sites
+- genotype calling based on genotype likelihoods
+- compatibility with minimap2 and other mappers
+- inference of TIPs from single-end reads
 
 <img src="detettore_ad.png" alt="drawing" width="600"/>  
 
@@ -23,8 +31,7 @@ June 2021
   2. [Multiple samples](#multiple)
   3. [Combine VCF files](#combineVCFs)
 3. [TE toolbox](#tools)
-4. [New in version 2](#version)
-5. [License](#license)
+4. [License](#license)
 
 
 ## <a name="install"></a>Installation
@@ -148,15 +155,6 @@ parallel -j10 < run_detettore.cmds 2> err.log > stdout.log
 ```
 
 ### <a name="combineVCFs"></a>Combine VCFs
-
-
-
-## <a name="version"></a>**New in version 2**
-- all output in vcf format
-- output invariant sites
-- genotype calling based on genotype likelihoods
-- compatibility with minimap2
-- tools for downstream analysis
 
 ## <a name="licence"></a>Licence
 GNU General Public License v3. See LICENSE.txt for details.
