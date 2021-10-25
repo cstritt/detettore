@@ -163,7 +163,7 @@ def main():
         cipos = fields[7].split('CIPOS=')[1].split(';')[0].split(',')
         print(cipos)
         print()
-        if not meininfo:
+        if not meinfo:
             break
         closest = [int(), float('inf')]
 
