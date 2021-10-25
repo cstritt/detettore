@@ -158,8 +158,6 @@ def main():
         te = meinfo.split(',')[0]
         cipos = fields[7].split('CIPOS=')[1].split(';')[0].split(',') #problem: if it is last entry it does not find bc there is no ';' at the end
                                                                       #careful: same problem with all your re.searches
-        if not meinfo:
-            break
         closest = [int(), float('inf')]
 
         for i in range(int(cipos[0]), int(cipos[1])+1):
