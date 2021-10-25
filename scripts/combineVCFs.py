@@ -75,8 +75,8 @@ def parse_vcf_lines(handler, sample_order, vard, imprecise, filters):
         # Filtering
         if var_type == 'INS:ME' and filters:
 
-            SR = re.search(r'SR=(.*?);', fields[7]).group(1)
-            DR = re.search(r'DR=(.*?);', fields[7]).group(1)
+            SR = fields[7].split('SR=')[1].split(';')[0]
+            DR = fields[7].split('DR=')[1].split(';')[0]
 
             if 'require_split' in filters and SR == '0':
                 continue
@@ -90,7 +90,7 @@ def parse_vcf_lines(handler, sample_order, vard, imprecise, filters):
 
         chromosome, pos = fields[0], int(fields[1])
 
-        meinfo = re.search(r'MEINFO=(.*?);', fields[7]).group(1)
+        meinfo = fields[7].split('MEINFO=')[1].split(';')[0]
         te = meinfo.split(',')[0]
         uniq_id = (chromosome, pos, te)
 
@@ -153,16 +153,11 @@ def main():
     for sample, fields in imprecise:
 
         chromosome, pos = fields[0], int(fields[1])
-        meinfo = re.search(r'MEINFO=(.*?);', fields[7]).group(1)
-        print(meinfo)
-        
+        meinfo = fields[7].split('MEINFO=')[1].split(';')[0] #not sure if necessary
         
         te = meinfo.split(',')[0]
-
-        print(fields[7])
-        cipos = fields[7].split('CIPOS=')[1].split(';')[0].split(',')
-        print(cipos)
-        print()
+        cipos = fields[7].split('CIPOS=')[1].split(';')[0].split(',') #problem: if it is last entry it does not find bc there is no ';' at the end
+                                                                      #careful: same problem with all your re.searches
         if not meinfo:
             break
         closest = [int(), float('inf')]
