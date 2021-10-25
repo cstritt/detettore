@@ -155,7 +155,9 @@ def main():
         chromosome, pos = fields[0], int(fields[1])
         meinfo = re.search(r'MEINFO=(.*?);', fields[7]).group(1)
         te = meinfo.split(',')[0]
-        print(fields)
+        print(fields[7])
+        print(cipos)
+        print()
         cipos = re.search(r'CIPOS=(.*?);', fields[7]).group(1).split(',')
 
         closest = [int(), float('inf')]
