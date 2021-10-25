@@ -156,8 +156,8 @@ def main():
         meinfo = re.search(r'MEINFO=(.*?);', fields[7]).group(1)
         te = meinfo.split(',')[0]
 
-        cipos = re.search(r'CIPOS=(.*?);', fields[7]).group(1).split(',')
         print(fields[7])
+        cipos = re.search(r'CIPOS=(.*?);', fields[7]).group(1).split(',')
         print(cipos)
         print()
         closest = [int(), float('inf')]
