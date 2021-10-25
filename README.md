@@ -1,5 +1,4 @@
-[![GitHub Downloads](https://img.shields.io/github/downloads/cstritt/detettore/total.svg?style=social&logo=github&label=Download)](https://github.com/cstritt/detettore/releases)
-
+[![PyPI](https://img.shields.io/pypi/v/detettore.svg?style=flat)](https://pypi.python.org/pypi/detettore)
 
 *detettore* – a program to detect transposable element polymorphisms
 ====================================================================
@@ -35,32 +34,11 @@ New in version 2:
 
 
 ## <a name="install"></a>Installation
-*detettore* is written in Python 3 and available on PyPI. To avoid conflicts
-with dependencies, it is best to install it in a virtual environment:
+Packaging in progress. At present, the program can be used by downloading
+the git folder and installing missing Python dependencies manually.
 
-``` bash
-# Create environment called detettore
-conda create -n detettore python=3.7
+The only non-Python dependency is minimap2, which can be downloaded here: https://github.com/lh3/minimap2.
 
-# Activate environment
-source activate detettore
-
-# Install detettore
-pip install detettore
-
-```
-Or when not using Anaconda:
-``` bash
-# Create environment, where <location> is the path to the environment
-virtualenv -p python3.7 <location>
-
-# Activate environment
-source <location>/bin/activate
-
-# Install detettore
-pip install detettore
-
-```
 
 ## <a name="usage"></a>Usage
 
