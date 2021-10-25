@@ -4,15 +4,7 @@
 
 Copyright (C) 2021 C. Stritt
 License: GNU General Public License v3. See LICENSE.txt for details.
-
-
-FACIENDA:
-    - check DP and GT assignement for TAPs
-    - run TIP splitreads only if reads are not paired-end
-    
-    - write bamstats to vcf (including median coverage), for later filtering vcfs
-    
-
+        
 """
 
 import argparse
@@ -172,7 +164,7 @@ def main():
 
 
     #%% TAPs
-    if "taps" in parameters.modus and parameters.paired_end:
+    if "taps" in parameters.modus:
 
         print('\n\nSEARCHING TE ABSENCE POLYMORPHISMS')
         print('\nExtracting read pairs around annotated TEs ...')
@@ -185,14 +177,14 @@ def main():
 
     #%% Write VCF, stats, and log file
 
-    if "tips" in parameters.modus and "taps" in parameters.modus and parameters.paired_end:
+    if "tips" in parameters.modus and "taps" in parameters.modus:
         combined_vcf = tips_vcf + taps_vcf
         combined_vcf = sorted(combined_vcf, key=lambda x: (x[0], int(x[1])))
 
     elif "tips" in parameters.modus:
         combined_vcf = tips_vcf
 
-    elif "taps" in parameters.modus and parameters.paired_end:
+    elif "taps" in parameters.modus:
         combined_vcf = taps_vcf
 
     date = time.strftime("%d/%m/%Y")
@@ -248,7 +240,7 @@ def main():
             'TIPs summary:\n0/1:%i\n1/1:%i\n' % (tips_stats['0/1'], tips_stats['1/1'])
             )
 
-    if 'taps' in parameters.modus and parameters.paired_end:
+    if 'taps' in parameters.modus:
         print(
             'TAPs summary:\n0/0:%i\n0/1:%i\n1/1:%i\n./.:%i\n' % (taps_stats['0/0'],taps_stats['0/1'], taps_stats['1/1'], taps_stats['./.'])
             )
@@ -260,19 +252,21 @@ def main():
             filename = args.outname +'.log',
             filemode='a',
             format = '%(levelname)-10s %(asctime)s %(message)s',
-            level = logging.DEBUG)
+            level = logging.INFO
+            )
 
     log = logging.getLogger(args.outname +'.log')
     
-    log.info('readlength: %i, isize_mean: %i, isize_stdev: %i' % (
-        parameters.readlength, parameters.isize_mean, parameters.isize_stdev))
+    readtype = 'PE' if parameters.paired_end else 'SE'
+    
+    log.info('readlength: %i, readtype: %i, isize_mean: %i, isize_stdev: %i' % (
+        parameters.readlength, readtype, parameters.isize_mean, parameters.isize_stdev))
 
     log.info(args)
 
     # Clean up
     if not args.keep:
         shutil.rmtree(args.outname + '_tmp')
-
 
 if __name__ == '__main__':
     main()

@@ -148,7 +148,7 @@ class mise_en_place:
             self.isize_mean = 0
             self.isize_stdev = 0            
 
-            print('\nNo paired-end reads discovered! Only TIPs based on split reads will be reported.')
+            print('\nNo paired-end reads discovered! Only TIPs based on split reads will be reported.\nTAPs will be scored as missing data (./.)')
             
         else:
             self.paired_end = True
@@ -319,6 +319,9 @@ class TIPs:
         Get all the information required in the vcf, as listed below.  
         
         Positions in vcf are 1-based.
+        
+        Get rid of some noise: use ibpiqr to filter out spread out clusters
+            
         """
 
         vcf_lines = []
@@ -339,6 +342,27 @@ class TIPs:
             split = site[3]
             
             if parameters.require_split and not split:
+                continue
+
+
+            """ Dispersal of read breakpoints in cluster (interquartile range). 
+            Large IR expected for spurious cluster, while for a true TIP reakpoints
+            should be centered around the insertion site.
+            
+            Filter out candidates with a spread larger than twice the readlength.
+            
+            """
+            breakpoints = []
+            if discordant:
+                breakpoints += discordant.breakpoint[0] + discordant.breakpoint[1]
+            if split:
+                breakpoints += split.breakpoint[0] + split.breakpoint[1]
+            
+            q1 = scipy.percentile(breakpoints , 25)
+            q3 = scipy.percentile(breakpoints , 75)
+            IQR = q3 - q1
+            
+            if IQR > 2*parameters.readlength:
                 continue
 
 
@@ -485,21 +509,6 @@ class TIPs:
             """
             AL = len(te_hits[te]['aligned_positions'])
             PROP = AL / len(parameters.telib[te])
-            
-            
-            """ Dispersal of read breakpoints in cluster (interquartile range). 
-            Large IR expected for spurious cluster, while for a true TIP reakpoints
-            should be centered around the insertion site
-            """
-            breakpoints = []
-            if discordant:
-                breakpoints += discordant.breakpoint[0] + discordant.breakpoint[1]
-            if split:
-                breakpoints += split.breakpoint[0] + split.breakpoint[1]
-            
-            q1 = scipy.percentile(breakpoints , 25)
-            q3 = scipy.percentile(breakpoints , 75)
-            IQR = q3 - q1
             
             
             """ Target site duplication:

@@ -195,7 +195,7 @@ def return_dict(bamfile):
         read_d, isize_d = length_statistiks
     
         return {
-            'readlength' : read_d['readlength_mean'],
+            'readlength' : read_d['readlength_max'],
             'isize_mean' : isize_d['isize_mean_cd'],
             'isize_stdev' : isize_d['isize_stdev_cd']
             }
