@@ -1,19 +1,26 @@
 [tool.poetry]
 name = "detettore"
-version = "2.0"
+version = "2.0.1"
 description = "A tool to detect transposable element polymorphisms"
 authors = ["cstritt <crstp.strt@gmail.com>"]
 license = "GPL-3.0"
+readme= "README.md"
 repository = "https://github.com/cstritt/detettore"
+packages = [ { include = "detettore.py" }, { include = "scripts"} ]
 
 [tool.poetry.dependencies]
 python = ">=3.7,<3.10"
-#mappy = {git = "https://github.com/lh3/minimap2.git"}
 biopython = "^1.79"
 numpy = "^1.21.0"
-pysam = "^0.16.0"
 numba = "^0.53.1"
 scipy = "^1.7.0"
+#mappy = {url = "https://github.com/lh3/minimap2/releases/download/v2.22/minimap2-2.22.tar.bz2"}
+pysam = "^0.17.0"
+
+[tool.poetry.scripts]
+detettore = "detettore:main"
+combinevcf = "scripts.combineVCFs:main"
+bamstats = "scripts.bamstats:main"
 
 [tool.poetry.dev-dependencies]
 

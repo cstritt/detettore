@@ -6,3 +6,4 @@ testing
 scripts/TE_consensus.py
 benchmark
 load_test_params.py
+dist
