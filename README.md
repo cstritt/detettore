@@ -4,14 +4,6 @@
 ====================================================================
 September 2021
 
-Version 2.0 beta  
-New in version 2:
-- all output in vcf format
-- output of invariant sites
-- genotype calling based on genotype likelihoods
-- compatibility with minimap2 and other mappers
-- inference of TIPs from single-end reads
-
 <img src="detettore_ad.png" alt="drawing" width="600"/>  
 
 \
@@ -24,21 +16,56 @@ New in version 2:
 
 
 ## Table of Contents
-1. [Installation](#install)
-2. [Usage](#usage)
+1. [About](#about)
+2. [Installation](#install)
+3. [Usage](#usage)
   1. [Single sample](#single)
   2. [Multiple samples](#multiple)
   3. [Combine VCF files](#combineVCFs)
-3. [TE toolbox](#tools)
 4. [License](#license)
 
 
+## <a name="about"></a>About
+*detettore* was developed and tested with plant (*Brachypodium distachyon*, 272 Mb) and bacterial (*Mycobacterium tuberculosis*, 4.4 Mb) genomes.
+
+New in version 2:
+- all output in vcf format
+- output of invariant sites
+- genotype calling based on genotype likelihoods
+- compatibility with minimap2 and other mappers
+- inference of TIPs from single-end reads
+
 ## <a name="install"></a>Installation
-Packaging in progress. At present, the program can be used by downloading
-the git folder and installing missing Python dependencies manually.
+*detettore* is written in Python 3 and available on PyPI. The only non-Python
+dependency is minimap2, which can be downloaded here: https://github.com/lh3/minimap2.
 
-The only non-Python dependency is minimap2, which can be downloaded here: https://github.com/lh3/minimap2.
+To avoid conflicts with dependencies, it is best to install *detettore* in a virtual environment:
 
+``` bash
+# Create environment called detettore
+conda create -n detettore python=3.7
+
+# Activate environment
+source activate detettore
+
+# Install detettore
+pip install detettore
+
+```
+Or when not using Anaconda:
+``` bash
+# Create environment, where <location> is the path to the environment
+virtualenv -p python3.7 <location>
+
+# Activate environment
+source <location>/bin/activate
+
+# Install detettore
+pip install detettore
+
+```
+
+After installation, three commands should be callable from the command line: detettore, combinevcf, and bamstats.
 
 ## <a name="usage"></a>Usage
 
@@ -47,7 +74,7 @@ The only non-Python dependency is minimap2, which can be downloaded here: https:
 Basic usage illustrated with the data in the example folder.
 
 ``` bash
-detettore.py \
+detettore \
   -b example/reads.bam \
   -r example/reference.fasta \
   -a example/TE_annotation.gff \
@@ -84,7 +111,7 @@ detettore.py \
 
 Points to consider:
   - **Chromosome names** must be consistent in the different files, which can be a problem when files are downloaded from different sources.
-  - The bam file should be as **unfiltered** as possible: files containing only properly paired or uniquely mapping reads, while useful for SNP calling, lack the information tapped by *detettore*.
+  - The bam file should be as **unfiltered** as possible: files containing only properly paired or uniquely mapping reads, while useful for SNP calling, lack the information required by *detettore*.
 
 
 #### Output
@@ -113,7 +140,7 @@ do
   sample=$(basename $bampath | cut -d'.' -f1)
 
   echo "\
-  detettore.py \
+  detettore \
     -b $bampath \
     -r $ref \
     -a $annot \
@@ -133,6 +160,17 @@ parallel -j10 < run_detettore.cmds 2> err.log > stdout.log
 ```
 
 ### <a name="combineVCFs"></a>Combine VCFs
+Single vcf files can be combined with the command combinevcf. Some basic filtering can be applied in this step.
+
+``` bash
+# Combine vcf files
+combinevcf <Path to folder containing *.vcf.gz output of detettore>
+
+# Show filtering options
+combinevcf -h
+
+```
+
 
 ## <a name="licence"></a>Licence
 GNU General Public License v3. See LICENSE.txt for details.

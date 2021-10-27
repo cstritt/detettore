@@ -259,7 +259,7 @@ def main():
     
     readtype = 'PE' if parameters.paired_end else 'SE'
     
-    log.info('readlength: %i, readtype: %i, isize_mean: %i, isize_stdev: %i' % (
+    log.info('readlength: %i, readtype: %s, isize_mean: %i, isize_stdev: %i' % (
         parameters.readlength, readtype, parameters.isize_mean, parameters.isize_stdev))
 
     log.info(args)
