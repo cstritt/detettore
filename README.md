@@ -29,7 +29,7 @@ September 2021
 *detettore* was developed and tested with plant (*Brachypodium distachyon*, 272 Mb) and bacterial (*Mycobacterium tuberculosis*, 4.4 Mb) genomes.
 
 New in version 2:
-- all output in vcf format
+- all output in VCF format
 - output of invariant sites
 - genotype calling based on genotype likelihoods
 - compatibility with minimap2 and other mappers
@@ -91,7 +91,7 @@ detettore \
 | Parameter               | Explanation
 |-                        |-
 |**Input/Output**         |
-|\-b                      | bam file with reference-aligned paired-end reads.
+|\-b                      | bam/cram file with reference-aligned paired-end or single-end reads.
 |\-r                      | Reference genome in fasta format.
 |\-t                      | TE consensus sequences in fasta format.
 |\-a                      | TE annotation in bed or gff format.
@@ -112,7 +112,7 @@ detettore \
 Points to consider:
   - **Chromosome names** must be consistent in the different files, which can be a problem when files are downloaded from different sources.
   - The bam file should be as **unfiltered** as possible: files containing only properly paired or uniquely mapping reads, while useful for SNP calling, lack the information required by *detettore*.
-
+  - With single-end reads, only TIPs will be detected, while TAPs will be output as missing data (./. in the VCF).
 
 #### Output
 The command above will produce a file called example.vcf.gz containing TIPs and TAPs,
@@ -160,10 +160,10 @@ parallel -j10 < run_detettore.cmds 2> err.log > stdout.log
 ```
 
 ### <a name="combineVCFs"></a>Combine VCFs
-Single vcf files can be combined with the command combinevcf. Some basic filtering can be applied in this step.
+Single VCF files can be combined with the command combinevcf. Some basic filtering can be applied in this step.
 
 ``` bash
-# Combine vcf files
+# Combine VCF files
 combinevcf <Path to folder containing *.vcf.gz output of detettore>
 
 # Show filtering options
