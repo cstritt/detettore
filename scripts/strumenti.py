@@ -406,7 +406,7 @@ class TIPs:
             """
             if split and te in split.te_hits:
 
-                split.get_REF_support(parameters, 'split')
+                split.get_REF_support(parameters, 'splitreads')
 
                 ref_Q = [split.ref_support[x] for x in split.ref_support]
                 alt_Q = [split.te_hits[te]['combined_mapqs'][x] for x in split.te_hits[te]['combined_mapqs']]
