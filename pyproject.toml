@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "detettore"
-version = "2.0.2"
+version = "2.0.3"
 description = "A tool to detect transposable element polymorphisms"
 authors = ["cstritt <crstp.strt@gmail.com>"]
 license = "GPL-3.0"
