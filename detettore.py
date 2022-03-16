@@ -107,7 +107,12 @@ def get_args():
         '-lDR', dest='aln_len_DR',
         type=int, default=50,
         help='Minimum alignment length for discordant read-pair target hits. [50]')
-
+    
+    parser_thresholds.add_argument(
+        '-maxcov', dest='cov_multiplier',
+        type=int, default=4,
+        help='Discard regions with a coverage > maxcov * genome-wide mean coverage. [4]')
+    
     args=parser.parse_args()
 
     return args

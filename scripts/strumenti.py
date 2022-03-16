@@ -25,7 +25,6 @@ import sys
 import numpy as np
 import math
 import re
-import scipy
 import copy
 import multiprocessing as mp
 
@@ -60,6 +59,7 @@ class mise_en_place:
         self.mapq = args.mapq
         self.aln_len_DR = args.aln_len_DR
         self.aln_len_SR = args.aln_len_SR
+        self.cov_multiplier = args.maxcov
 
         # Program settings
         self.modus = args.modus
@@ -139,12 +139,13 @@ class mise_en_place:
         print('Estimating bam read statistics\n...')
         readinfo = bamstats.return_dict(self.bamfile)
         for k in readinfo:
-                print(k + ' : ' + str(readinfo[k]))   
+                print(k + ' : ' + str(readinfo[k]))
         
         # No paired-end reads!
-        if len(readinfo) == 1:
+        if len(readinfo) == 2:
             self.paired_end = False
             self.readlength = readinfo['readlength']
+            self.coverage = readinfo['coverage']
             self.isize_mean = 0
             self.isize_stdev = 0            
 
@@ -155,6 +156,7 @@ class mise_en_place:
             self.readlength = readinfo['readlength']
             self.isize_mean = readinfo['isize_mean']
             self.isize_stdev = readinfo['isize_stdev']
+            self.coverage = readinfo['coverage']
     
 
 class TIPs:
@@ -358,11 +360,31 @@ class TIPs:
             if split:
                 breakpoints += split.breakpoint[0] + split.breakpoint[1]
             
-            q1 = scipy.percentile(breakpoints , 25)
-            q3 = scipy.percentile(breakpoints , 75)
+            q1 = np.percentile(breakpoints , 25)
+            q3 = np.percentile(breakpoints , 75)
             IQR = q3 - q1
             
             if IQR > 2*parameters.readlength:
+                continue
+
+
+            """ Regional coverage
+            
+            Discard sites where regional coverage > maxcov*mean of coverage core distribution.
+            (see bamstats.py for how mean coverage is estimated)
+            To get rid of extreme coverage regions which cause the GT likelihood 
+            calculation to break down            
+            """
+            if discordant:
+                region = [CHROM, discordant.region_start, discordant.region_end]
+
+            else:
+                region = [CHROM, split.region_start, split.region_end]
+
+            region_coverage = bamstats.local_cov(region, parameters.bamfile)
+            DPADJ = region_coverage[0]
+            
+            if DPADJ > (parameters.cov_multiplier*parameters.coverage):
                 continue
 
 
@@ -530,17 +552,6 @@ class TIPs:
 
             TSDLEN = len(TSD)
 
-
-            """ Regional coverage
-            """
-            if discordant:
-                region = [CHROM, discordant.region_start, discordant.region_end]
-
-            else:
-                region = [CHROM, split.region_start, split.region_end]
-
-            region_coverage = bamstats.local_cov(region, parameters.bamfile)
-            DPADJ = region_coverage[0]
 
             """ Confidence interval for imprecise variants
             """
@@ -1230,8 +1241,8 @@ def extract_deviant_reads(te,  region, parameters):
 
 def remove_outliers(lista):
     # outliers defined as in R's boxplots
-    q_1 = scipy.percentile(lista, 25)
-    q_3 = scipy.percentile(lista, 75)
+    q_1 = np.percentile(lista, 25)
+    q_3 = np.percentile(lista, 75)
 
     boxlength = q_3 - q_1
 

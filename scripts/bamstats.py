@@ -180,14 +180,21 @@ def return_dict(bamfile):
     Returns dictionary used  by detettore. Coverage stats disabled, as 
     they require second traversal of bam file.
     
+    v. 2.0.4: coverage enabled again, so regions with much too high coverage
+    can be discarded!     
+    
+    
     """
 
     length_statistiks = length_stats(bamfile)
+    cov_statistiks = coverage_stats(bamfile)
+    
     
     # No paired end reads
     if isinstance(length_statistiks, dict):
         
         return { 
+            'coverage' : cov_statistiks['cov_mean_cd'],
             'readlength' : length_statistiks['readlength_max']
             }
          
@@ -195,6 +202,7 @@ def return_dict(bamfile):
         read_d, isize_d = length_statistiks
     
         return {
+            'coverage' : cov_statistiks['cov_mean_cd'],
             'readlength' : read_d['readlength_max'],
             'isize_mean' : isize_d['isize_mean_cd'],
             'isize_stdev' : isize_d['isize_stdev_cd']
