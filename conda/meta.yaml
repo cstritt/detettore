@@ -1,0 +1,35 @@
+{% set version = "2.0.4" %}
+
+package:
+  name: detettore
+  version: {{ version }}
+
+source:
+  git_url: https://github.com/cstritt/detettore.git
+  git_rev: "2.0.4"
+
+requirements:
+  build:
+    - python
+    - setuptools
+  run:
+    - python >= 3
+    - biopython >= 1.79
+    - numpy >= 1.21.0
+    - numba >= 0.53.1
+    - scipy >= 1.7.0
+    - pysam >= 0.17.0
+    - mappy >= 2.20
+
+build:
+  number: 1
+  script: python setup.py install
+
+test:
+  commands:
+    - dettore.py -h
+
+about:
+  home: https://github.com/cstritt/detettore
+  license: GNU General Public License
+  summary: 'A tool to detect transposable element polymorphisms'

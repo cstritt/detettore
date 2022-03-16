@@ -79,7 +79,7 @@ class mise_en_place:
         # Region
         self.region = args.region.split(':') if args.region else None
         
-        if self.region and len(self.region)==2:
+        if self.region and len(self.region)==3:
             self.region[1] = int(self.region[1])
             self.region[2] = int(self.region[2])
 
