@@ -4,7 +4,7 @@
 
 Copyright (C) 2021 C. Stritt
 License: GNU General Public License v3. See LICENSE.txt for details.
-        
+
 """
 
 import argparse
@@ -107,12 +107,12 @@ def get_args():
         '-lDR', dest='aln_len_DR',
         type=int, default=50,
         help='Minimum alignment length for discordant read-pair target hits. [50]')
-    
+
     parser_thresholds.add_argument(
         '-maxcov', dest='cov_multiplier',
         type=int, default=4,
         help='Discard regions with a coverage > maxcov * genome-wide mean coverage. [4]')
-    
+
     args=parser.parse_args()
 
     return args
@@ -216,7 +216,7 @@ def main():
         '##INFO=<ID=AL,Number=1,Type=Integer,Description="TE alignment length">',
         '##INFO=<ID=AP,Number=1,Type=Integer,Description="Proportion of TE covered by reads">',
         '##INFO=<ID=BPIQR,Number=1,Type=Integer,Description="Interquartile range of insertion breakpoints. Large for spurious read clusters">'
-        
+
         '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
         '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">',
         '##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths for the ref and alt alleles in the order listed">',
@@ -261,9 +261,9 @@ def main():
             )
 
     log = logging.getLogger(args.outname +'.log')
-    
+
     readtype = 'PE' if parameters.paired_end else 'SE'
-    
+
     log.info('readlength: %i, readtype: %s, isize_mean: %i, isize_stdev: %i' % (
         parameters.readlength, readtype, parameters.isize_mean, parameters.isize_stdev))
 

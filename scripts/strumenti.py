@@ -7,15 +7,6 @@ Toolbox for TE polymorphism detection
 Copyright (C) 2021 C. Stritt
 License: GNU General Public License v3. See LICENSE.txt for details.
 
-
-Issues:
-    -l. 509: GQ used instead of QUAL; use '.' for the moment
-        
-    - TE annotation: require bed format, with name in col5 and (optionally)
-    family in col6. If family is not provided, it is inferred from the consensus library
-    
-    
-
 """
 
 import os
@@ -59,7 +50,7 @@ class mise_en_place:
         self.mapq = args.mapq
         self.aln_len_DR = args.aln_len_DR
         self.aln_len_SR = args.aln_len_SR
-        self.cov_multiplier = args.maxcov
+        self.cov_multiplier = args.cov_multiplier
 
         # Program settings
         self.modus = args.modus

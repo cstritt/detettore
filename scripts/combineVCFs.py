@@ -12,7 +12,6 @@ Created on Thu Jun 17 11:46:10 2021
 import argparse
 import gzip
 import os
-import re
 import sys
 import time
 
