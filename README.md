@@ -40,11 +40,11 @@ This is the development version of *detettore*. Install it as follows:
 
 ``` bash
 #
-git clone git://github.com/cstritt/detettore.git -b dev
+git clone https://github.com/cstritt/detettore -b dev
 cd detettore
 
 # Create environment called detettore
-conda create -n detettore python=3.7 -f dependencies.yml
+conda env create -n detettore2 -f environment.yml
 
 # Activate environment
 conda activate detettore
@@ -54,10 +54,11 @@ conda activate detettore
 ## <a name="usage"></a>Usage
 
 ### <a name="single"></a>Single sample
-Basic usage illustrated with the data in the example folder.
+Basic usage illustrated with the data in the example folder. 
+To run the program, the full path to detettore.py has to be provided.
 
 ``` bash
-detettore \
+./detettore.py \
   -b example/reads.bam \
   -r example/reference.fasta \
   -a example/TE_annotation.gff \
@@ -123,7 +124,7 @@ do
   sample=$(basename $bampath | cut -d'.' -f1)
 
   echo "\
-  detettore \
+  detettore.py \
     -b $bampath \
     -r $ref \
     -a $annot \
@@ -147,10 +148,10 @@ Single VCF files can be combined with the command combinevcf. Some basic filteri
 
 ``` bash
 # Combine VCF files
-combinevcf <Path to folder containing *.vcf.gz output of detettore>
+combinevcf.py <Path to folder containing *.vcf.gz output of detettore>
 
 # Show filtering options
-combinevcf -h
+combinevcf.py -h
 
 ```
 
