@@ -1,11 +1,7 @@
-[![PyPI](https://img.shields.io/pypi/v/detettore.svg?style=flat)](https://pypi.python.org/pypi/detettore)
-
-[![install with bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat)](https://bioconda.github.io/recipes/isescan/README.html)
-
 
 *detettore* – a program to detect transposable element polymorphisms
 ====================================================================
-September 2021
+April 2023
 
 <img src="detettore_ad.png" alt="drawing" width="600"/>  
 
@@ -39,24 +35,23 @@ New in version 2:
 - inference of TIPs from single-end reads
 
 ## <a name="install"></a>Installation
-*detettore* is written in Python 3 and available on [conda](). To avoid conflicts with dependencies, it is best to install *detettore* in a virtual environment:
+This is the development version of *detettore*. Install it as follows:
+
 
 ``` bash
+#
+git clone git://github.com/cstritt/detettore.git -b dev
+cd detettore
+
 # Create environment called detettore
-conda create -n detettore python=3.7
+conda create -n detettore python=3.7 -f dependencies.yml
 
 # Activate environment
-source activate detettore
-
-# Install detettore
-conda install detettore
+conda activate detettore
 
 ```
 
-After installation, three commands should be callable from the command line: detettore, combinevcf, and bamstats.
-
 ## <a name="usage"></a>Usage
-
 
 ### <a name="single"></a>Single sample
 Basic usage illustrated with the data in the example folder.
