@@ -438,11 +438,11 @@ class TIPs:
                 alt_Q = [discordant.te_hits[te]['combined_mapqs'][x] for x in discordant.te_hits[te]['combined_mapqs']]
                 
                 # Subsample to avoid numpy issues with extremely low or high values
-                if len(ref_Q) > 200:
-                    ref_Q = sample(ref_Q, 200)
+                if len(ref_Q) > 100:
+                    ref_Q = sample(ref_Q, 100)
                     
-                if len(alt_Q) > 200:
-                    alt_Q = sample(alt_Q, 200)
+                if len(alt_Q) > 100:
+                    alt_Q = sample(alt_Q, 100)
                 
                 gt_dr = get_genotype(ref_Q, alt_Q)
                 
@@ -572,7 +572,7 @@ class TIPs:
             
             # Max GT likelihood of 1e6 (to avoid inf values)
             PL = [ str(int(x)) if not math.isinf(x) else '1e6' for x in genotype[2] ]
-            GT = '%s:%i:%s:%i:%s' % (genotype[0], genotype[1], AD, DP, ','.join(PL))
+            GT = '%s:%s:%s:%i:%s' % (genotype[0], str(genotype[1]), AD, DP, ','.join(PL))
             
             outline = [CHROM, POS, '.', REF, ALT, '.', 'PASS', INFO, FORMAT, GT]
             
@@ -951,11 +951,11 @@ class TAPs:
             
 
             # Subsample to avoid numpy issues with extremely low or high values
-            if len(ref_Q) > 200:
-                ref_Q = sample(ref_Q, 200)
+            if len(ref_Q) > 100:
+                ref_Q = sample(ref_Q, 100)
                 
-            if len(alt_Q) > 200:
-                alt_Q = sample(alt_Q, 200)
+            if len(alt_Q) > 100:
+                alt_Q = sample(alt_Q, 100)
             
             GT, GQ, PL = get_genotype(ref_Q, alt_Q)
             PL = [str(x) for x in PL]
@@ -973,7 +973,7 @@ class TAPs:
             
             DP = str(len(site.deviant_reads['mapqs']) + len(site.ref_support))
             
-            gt_field = '%s:%i:%s:%s:%s' % (GT, GQ, AD, DP, ','.join(PL))
+            gt_field = '%s:%s:%s:%s:%s' % (GT, str(GQ), AD, DP, ','.join(PL))
 
             outline = [CHROM, POS, '.', REF, ALT, GQ, 'PASS', INFO, FORMAT, gt_field]
             vcf_lines.append(outline)
@@ -1719,10 +1719,10 @@ def get_genotype(ref_Q, alt_Q):
     Q_norm = [x - minQ for x in gt_phred]
     Q_norm.sort()
 
-    if math.isinf(Q_norm[1]):
-        Q_norm[1] = 999
-
-    GQ = round(Q_norm[1] - Q_norm[0])
+    try:
+        GQ = round(Q_norm[1] - Q_norm[0])
+    except ValueError:
+        GQ = 'NA'
 
     return GT, GQ, Q_norm
 
