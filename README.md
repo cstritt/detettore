@@ -39,12 +39,12 @@ This is the development version of *detettore*. Install it as follows:
 
 
 ``` bash
-#
+# Use -b dev to download specific branch
 git clone https://github.com/cstritt/detettore -b dev
 cd detettore
 
-# Create environment called detettore
-conda env create -n detettore2 -f environment.yml
+# Create detettore environment from file
+conda env create -n detettore -f environment.yml
 
 # Activate environment
 conda activate detettore
