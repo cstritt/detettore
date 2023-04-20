@@ -571,7 +571,8 @@ class TIPs:
             FORMAT = 'GT:GQ:AD:DP:PL'
             
             # Max GT likelihood of 1e6 (to avoid inf values)
-            PL = [ str(int(x)) if not math.isinf(x) else '1e6' for x in genotype[2] ]
+            #PL = [ str(int(x)) if not math.isinf(x) else '1e6' for x in genotype[2] ]
+            PL = [str(x) for x in genotype[2]]
             GT = '%s:%s:%s:%i:%s' % (genotype[0], str(genotype[1]), AD, DP, ','.join(PL))
             
             outline = [CHROM, POS, '.', REF, ALT, '.', 'PASS', INFO, FORMAT, GT]
