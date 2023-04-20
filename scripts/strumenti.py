@@ -1723,7 +1723,7 @@ def get_genotype(ref_Q, alt_Q):
     try:
         GQ = round(Q_norm[1] - Q_norm[0])
     except ValueError:
-        GQ = 'NA'
+        GQ = 'nan'
 
     return GT, GQ, Q_norm
 
